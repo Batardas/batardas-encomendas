@@ -1129,10 +1129,11 @@ document.getElementById("btnCriarArtigo").addEventListener("click", async () => 
     if (error) { erroEl.textContent = "Erro ao criar: " + traduzirErro(error.message); return; }
 
     if (custo) {
-        await supabaseClient.from("custos_artigo").upsert(
+        const { error: erroCusto } = await supabaseClient.from("custos_artigo").upsert(
             { artigo_id: data.artigo_id, custo_unitario: Number(custo) },
             { onConflict: "artigo_id" }
         );
+        if (erroCusto) { erroEl.textContent = "Artigo criado, mas o custo não gravou: " + traduzirErro(erroCusto.message); return; }
     }
 
     document.getElementById("naReferencia").value = "";
@@ -1797,11 +1798,10 @@ async function carregarAcessosExtraDoUtilizador(utilizadorId) {
         btn.className = activo ? "" : "secundario";
         btn.textContent = nome + (activo ? " ✓" : "");
         btn.addEventListener("click", async () => {
-            if (activo) {
-                await supabaseClient.from("acessos_extra").delete().eq("perfil_id", utilizadorId).eq("role", role);
-            } else {
-                await supabaseClient.from("acessos_extra").insert({ perfil_id: utilizadorId, role });
-            }
+            const { error } = activo
+                ? await supabaseClient.from("acessos_extra").delete().eq("perfil_id", utilizadorId).eq("role", role)
+                : await supabaseClient.from("acessos_extra").insert({ perfil_id: utilizadorId, role });
+            if (error) { toast("Erro ao alterar acesso: " + traduzirErro(error.message), "erro"); return; }
             carregarAcessosExtraDoUtilizador(utilizadorId);
         });
         container.appendChild(btn);
@@ -1817,7 +1817,8 @@ async function carregarResponsabilidadesDoUtilizador(utilizadorId) {
         btn.className = "secundario";
         btn.textContent = r.etiqueta + " ✕";
         btn.addEventListener("click", async () => {
-            await supabaseClient.from("responsabilidades").delete().eq("perfil_id", utilizadorId).eq("etiqueta", r.etiqueta);
+            const { error } = await supabaseClient.from("responsabilidades").delete().eq("perfil_id", utilizadorId).eq("etiqueta", r.etiqueta);
+            if (error) { toast("Erro ao remover etiqueta: " + traduzirErro(error.message), "erro"); return; }
             carregarResponsabilidadesDoUtilizador(utilizadorId);
         });
         container.appendChild(btn);
@@ -2095,10 +2096,11 @@ document.getElementById("btnAdicionarLinhaReceita").addEventListener("click", as
     // preencheste, grava-se logo no custo médio do artigo — fica válido
     // em todo o site a partir de agora, não é um valor só desta receita.
     if (document.getElementById("rCusto").style.display !== "none" && custoNovo) {
-        await supabaseClient.from("custos_artigo").upsert(
+        const { error: erroCustoNovo } = await supabaseClient.from("custos_artigo").upsert(
             { artigo_id: componenteId, custo_unitario: Number(custoNovo) },
             { onConflict: "artigo_id" }
         );
+        if (erroCustoNovo) { erroEl.textContent = "Erro ao gravar o custo: " + traduzirErro(erroCustoNovo.message); return; }
     }
 
     const quantidadeBase = converterParaUnidadeBase(Number(quantidadeEscrita), unidadeEscolhida, unidadeBase);
@@ -2503,11 +2505,12 @@ document.getElementById("btnImportarArtigos").addEventListener("click", async ()
         if (erroArtigo) { erros.push(`${ref}: ${erroArtigo.message}`); continue; }
 
         if (custo !== null) {
-            await supabaseClient.from("custos_artigo").upsert(
+            const { error: erroCustoImport } = await supabaseClient.from("custos_artigo").upsert(
                 { artigo_id: artigo.artigo_id, custo_unitario: custo },
                 { onConflict: "artigo_id" }
             );
-            comCusto++;
+            if (erroCustoImport) { erros.push(`${ref}: custo não gravou — ${erroCustoImport.message}`); }
+            else { comCusto++; }
         }
 
         processados++;
@@ -2623,11 +2626,12 @@ document.getElementById("btnImportarLotes").addEventListener("click", async () =
     // Custo médio ponderado por artigo, a partir de todos os lotes deste ficheiro
     for (const [artigoId, { somaValor, somaQtd }] of Object.entries(custosAcumulados)) {
         if (somaQtd <= 0) continue;
-        await supabaseClient.from("custos_artigo").upsert(
+        const { error: erroCustoLotes } = await supabaseClient.from("custos_artigo").upsert(
             { artigo_id: artigoId, custo_unitario: somaValor / somaQtd },
             { onConflict: "artigo_id" }
         );
-        comCusto++;
+        if (erroCustoLotes) { erros.push(`Custo do artigo ${artigoId} não gravou — ${erroCustoLotes.message}`); }
+        else { comCusto++; }
     }
 
     resultadoEl.innerHTML = `

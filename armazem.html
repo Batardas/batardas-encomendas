@@ -682,7 +682,13 @@ function renderizarItensInventario() {
         `;
         tr.querySelector("input").addEventListener("change", async (e) => {
             const valor = e.target.value === "" ? null : Number(e.target.value);
-            await supabaseClient.from("inventario_itens").update({ quantidade_contada: valor, contado: valor !== null }).eq("id", item.id);
+            const { error } = await supabaseClient.from("inventario_itens").update({ quantidade_contada: valor, contado: valor !== null }).eq("id", item.id);
+            if (error) {
+                toast("A contagem NÃO ficou gravada: " + traduzirErro(error.message), "erro");
+                e.target.style.borderColor = "var(--perigo)";
+            } else {
+                e.target.style.borderColor = "";
+            }
         });
         corpo.appendChild(tr);
     });

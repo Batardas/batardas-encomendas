@@ -735,7 +735,8 @@ async function atribuirLotePa(planoId, loteId) {
 }
 
 async function removerDoPlano(id) {
-    await supabaseClient.from("plano_producao").delete().eq("id", id);
+    const { error } = await supabaseClient.from("plano_producao").delete().eq("id", id);
+    if (error) { toast("Erro ao remover: " + traduzirErro(error.message), "erro"); return; }
     carregarPlanoDoDia();
 }
 
