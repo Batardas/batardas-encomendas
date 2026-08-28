@@ -78,10 +78,16 @@
                 <div id="fProdutoResultados" class="lista-sugestoes" style="display:none;"></div>
             </div>
             <select id="fUnidade">
-                <option value="un">Unidades</option>
-                <option value="pack">Packs</option>
-                <option value="caixa">Caixas</option>
-                <option value="palete">Paletes</option>
+                <option value="un">Unidade</option>
+                <option value="kg">Kg</option>
+                <option value="l">Litro</option>
+                <option value="mil">Milheiro</option>
+                <option value="pack">Pack</option>
+                <option value="pack2">Pack 2</option>
+                <option value="pack4">Pack 4</option>
+                <option value="pack6">Pack 6</option>
+                <option value="caixa">Caixa</option>
+                <option value="palete">Palete</option>
             </select>
         </div>
         <div class="linha-form">
@@ -382,10 +388,16 @@
         <div class="linha-form">
             <select id="epLote"></select>
             <select id="epUnidade">
-                <option value="un">Unidades</option>
-                <option value="pack">Packs</option>
-                <option value="caixa">Caixas</option>
-                <option value="palete">Paletes</option>
+                <option value="un">Unidade</option>
+                <option value="kg">Kg</option>
+                <option value="l">Litro</option>
+                <option value="mil">Milheiro</option>
+                <option value="pack">Pack</option>
+                <option value="pack2">Pack 2</option>
+                <option value="pack4">Pack 4</option>
+                <option value="pack6">Pack 6</option>
+                <option value="caixa">Caixa</option>
+                <option value="palete">Palete</option>
             </select>
         </div>
         <div class="linha-form">
@@ -407,6 +419,19 @@
         </div>
         <p id="erroZona" class="erro"></p>
         <div id="listaZonas" style="font-size:14px; color:var(--ink-suave); margin-top:8px;"></div>
+    </div>
+
+    <div class="cartao" id="cartaoZonasAuditoria" style="display:none;">
+        <h2>Zonas de auditoria</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Diferentes das zonas de armazém acima (ex. Cozinha, Casa de banho, Receção) — usadas só nas auditorias de Qualidade.
+        </p>
+        <div class="linha-form">
+            <input id="zaNome" placeholder="Nome da zona (ex. Cozinha, Casa de banho)">
+            <button id="btnCriarZonaAuditoria">Adicionar</button>
+        </div>
+        <p id="erroZonaAuditoria" class="erro"></p>
+        <div id="listaZonasAuditoria" style="font-size:14px; color:var(--ink-suave); margin-top:8px;"></div>
     </div>
 
     <div class="cartao">
@@ -761,8 +786,10 @@ async function iniciar() {
         document.getElementById("navImportar").style.display = "flex";
         document.getElementById("cartaoCriarUtilizador").style.display = "block";
         document.getElementById("cartaoAcessosExtra").style.display = "block";
+        document.getElementById("cartaoZonasAuditoria").style.display = "block";
         await carregarUtilizadoresParaAcessosExtra();
         await carregarEtiquetasConhecidas();
+        await carregarZonasAuditoria();
     }
 
     await carregar();
@@ -888,19 +915,21 @@ async function carregarPlaneamentoSemanal() {
     Object.entries(procuraPorArtigo).forEach(([artigoId, info]) => {
         const stock = stockPorArtigo[artigoId] || 0;
         const deficit = info.total - stock;
+        const nomesClientes = escaparHtml(info.clientes.join(", "));
+        const designacao = escaparHtml(info.designacao);
         if (deficit > 0) {
             semProducao = false;
             blocoProducao.innerHTML += `
                 <div style="padding:8px 0; border-bottom:0.5px solid var(--linha); font-size:14px;">
-                    <strong>${info.designacao}</strong> — faltam <span style="color:var(--perigo); font-weight:600;">${deficit}</span> (stock actual: ${stock}, procura: ${info.total})<br>
-                    <span style="font-size:12px; color:var(--ink-suave);">${info.clientes.join(", ")}</span>
+                    <strong>${designacao}</strong> — faltam <span style="color:var(--perigo); font-weight:600;">${deficit}</span> (stock actual: ${stock}, procura: ${info.total})<br>
+                    <span style="font-size:12px; color:var(--ink-suave);">${nomesClientes}</span>
                 </div>`;
         } else {
             semEmbalamento = false;
             blocoEmbalamento.innerHTML += `
                 <div style="padding:8px 0; border-bottom:0.5px solid var(--linha); font-size:14px;">
-                    <strong>${info.designacao}</strong> — stock cobre a procura (${stock} disponível para ${info.total} pedidos)<br>
-                    <span style="font-size:12px; color:var(--ink-suave);">${info.clientes.join(", ")}</span>
+                    <strong>${designacao}</strong> — stock cobre a procura (${stock} disponível para ${info.total} pedidos)<br>
+                    <span style="font-size:12px; color:var(--ink-suave);">${nomesClientes}</span>
                 </div>`;
         }
     });
@@ -1364,7 +1393,13 @@ function activarEdicaoMovimento(movimentoId) {
         <input type="number" min="0.0001" step="0.0001" id="edQtd-${movimentoId}" value="${quantidadeActual}" style="width:90px; display:inline-block;">
         <select id="edUnidade-${movimentoId}" style="width:auto; display:inline-block;">
             <option value="un">${escaparHtml(unidadeBase)}</option>
+            <option value="kg">Kg</option>
+            <option value="l">Litro</option>
+            <option value="mil">Milheiro</option>
             <option value="pack">Pack</option>
+            <option value="pack2">Pack 2</option>
+            <option value="pack4">Pack 4</option>
+            <option value="pack6">Pack 6</option>
             <option value="caixa">Caixa</option>
             <option value="palete">Palete</option>
         </select>
@@ -1690,6 +1725,26 @@ document.getElementById("btnCriarZona").addEventListener("click", async () => {
     toast("Zona adicionada.", "sucesso");
 });
 
+// --- Zonas de auditoria (super admin) --------------------------------------
+async function carregarZonasAuditoria() {
+    const { data, error } = await supabaseClient.from("zonas_auditoria").select("nome").order("nome");
+    if (error) { console.error(error); return; }
+    document.getElementById("listaZonasAuditoria").textContent = data.length ? data.map((z) => z.nome).join(" · ") : "Ainda não criaste nenhuma zona de auditoria.";
+}
+
+document.getElementById("btnCriarZonaAuditoria").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroZonaAuditoria");
+    erroEl.textContent = "";
+    const nome = document.getElementById("zaNome").value.trim();
+    if (!nome) return;
+
+    const { error } = await supabaseClient.from("zonas_auditoria").insert({ nome });
+    if (error) { erroEl.textContent = "Erro ao adicionar: " + traduzirErro(error.message); return; }
+    document.getElementById("zaNome").value = "";
+    carregarZonasAuditoria();
+    toast("Zona de auditoria adicionada.", "sucesso");
+});
+
 // --- Gestão de utilizadores ------------------------------------------------
 async function chamarGestaoUtilizadores(corpo) {
     try {
@@ -1730,7 +1785,7 @@ const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém",
 async function carregarUtilizadores() {
     const resultado = await chamarGestaoUtilizadores({ acao: "listar_utilizadores" });
     const corpo = document.getElementById("corpoUtilizadores");
-    if (resultado.error) { corpo.innerHTML = `<tr><td colspan="4" style="color:var(--perigo);">${resultado.error}</td></tr>`; return; }
+    if (resultado.error) { corpo.innerHTML = `<tr><td colspan="4" style="color:var(--perigo);">${escaparHtml(resultado.error)}</td></tr>`; return; }
 
     corpo.innerHTML = "";
     resultado.utilizadores.forEach((u) => {
@@ -2012,7 +2067,7 @@ function renderizarReceitaAtual() {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td data-rotulo="Matéria-prima">${escaparHtml(linha.designacao)}</td>
-            <td data-rotulo="Quantidade total">${totalMostrado.toFixed(4)} ${linha.unidade_base}</td>
+            <td data-rotulo="Quantidade total">${totalMostrado.toFixed(4)} ${escaparHtml(linha.unidade_base)}</td>
             <td data-rotulo=""><button class="secundario" style="padding:4px 10px; font-size:12px;">Remover</button></td>
         `;
         tr.querySelector("button").addEventListener("click", () => {

@@ -78,7 +78,12 @@
         </div>
         <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Responsáveis (clica em quem quiseres, sem atalhos de teclado)</p>
         <div id="listaResponsaveisNc" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
-        <button class="secundario" id="btnAdicionarNc">Adicionar à lista</button>
+
+        <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Provas (opcional) — foto ou documento, também a partir do telemóvel</p>
+        <input type="file" id="ncProvas" accept="image/*,application/pdf,.doc,.docx" capture="environment" multiple>
+        <div id="listaProvasEscolhidas" style="font-size:12px; color:var(--ink-suave); margin-top:6px;"></div>
+
+        <button class="secundario" id="btnAdicionarNc" style="margin-top:14px;">Adicionar à lista</button>
 
         <button id="btnGuardarAuditoria" style="margin-top:16px;">Guardar auditoria</button>
         <p id="erroAuditoria" class="erro"></p>
@@ -146,10 +151,10 @@ async function iniciar() {
 }
 
 async function carregarZonasAuditoria() {
-    const { data } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    const { data } = await supabaseClient.from("zonas_auditoria").select("id, nome").order("nome");
     const select = document.getElementById("auZona");
     select.innerHTML = `<option value="">Sem zona associada</option>` +
-        (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+        (data ?? []).map((z) => `<option value="${z.id}">${escaparHtml(z.nome)}</option>`).join("");
 }
 
 async function carregarResponsaveis() {
@@ -170,16 +175,24 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     const accaoCorrectiva = document.getElementById("ncAccaoCorrectiva").value.trim();
     const prazo = document.getElementById("ncPrazo").value || null;
     const responsavelIds = [...document.querySelectorAll("#listaResponsaveisNc input:checked")].map((c) => c.value);
+    const provas = [...document.getElementById("ncProvas").files];
 
     if (!descricao) { toast("Escreve a descrição da não-conformidade.", "erro"); return; }
 
-    ncPendentesDaAuditoriaActual.push({ descricao, gravidade, accao_correctiva: accaoCorrectiva || null, prazo, responsavel_ids: responsavelIds });
+    ncPendentesDaAuditoriaActual.push({ descricao, gravidade, accao_correctiva: accaoCorrectiva || null, prazo, responsavel_ids: responsavelIds, provas });
     renderizarNcPendentes();
 
     document.getElementById("ncDescricao").value = "";
     document.getElementById("ncAccaoCorrectiva").value = "";
     document.getElementById("ncPrazo").value = "";
+    document.getElementById("ncProvas").value = "";
+    document.getElementById("listaProvasEscolhidas").textContent = "";
     document.querySelectorAll("#listaResponsaveisNc input:checked").forEach((c) => c.checked = false);
+});
+
+document.getElementById("ncProvas").addEventListener("change", (e) => {
+    const nomes = [...e.target.files].map((f) => f.name).join(", ");
+    document.getElementById("listaProvasEscolhidas").textContent = nomes ? `Escolhido(s): ${nomes}` : "";
 });
 
 function renderizarNcPendentes() {
@@ -188,7 +201,7 @@ function renderizarNcPendentes() {
     ncPendentesDaAuditoriaActual.forEach((nc, i) => {
         const div = document.createElement("div");
         div.style.cssText = "padding:8px 10px; background:var(--surface-recuado); border-radius:8px; margin-bottom:6px; font-size:13px; display:flex; justify-content:space-between; align-items:center;";
-        div.innerHTML = `<span><strong>${escaparHtml(nc.gravidade)}</strong> — ${escaparHtml(nc.descricao)}</span>`;
+        div.innerHTML = `<span><strong>${escaparHtml(nc.gravidade)}</strong> — ${escaparHtml(nc.descricao)}${nc.provas?.length ? ` <span style="color:var(--ink-suave);">(${nc.provas.length} anexo(s))</span>` : ""}</span>`;
         const btn = document.createElement("button");
         btn.className = "secundario";
         btn.textContent = "Remover";
@@ -217,7 +230,7 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
     if (error) { erroEl.textContent = "Erro ao guardar: " + traduzirErro(error.message); return; }
 
     for (const nc of ncPendentesDaAuditoriaActual) {
-        const { responsavel_ids, ...camposNc } = nc;
+        const { responsavel_ids, provas, ...camposNc } = nc;
         const { data: ncCriada, error: erroNc } = await supabaseClient
             .from("nao_conformidades").insert({ ...camposNc, auditoria_id: auditoria.id }).select("id").single();
         if (erroNc) { erroEl.textContent = "Erro ao guardar não-conformidade: " + traduzirErro(erroNc.message); continue; }
@@ -228,6 +241,12 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
             if (erroResponsaveis) {
                 erroEl.textContent = "A não-conformidade foi guardada, mas falhou ao atribuir responsável: " + traduzirErro(erroResponsaveis.message);
                 continue;
+            }
+        }
+        for (const ficheiro of provas ?? []) {
+            const resultado = await carregarFicheiroAnexoNc(ncCriada.id, "prova", ficheiro);
+            if (!resultado.ok) {
+                erroEl.textContent = `A não-conformidade foi guardada, mas "${ficheiro.name}" falhou ao anexar: ${traduzirErro(resultado.erro)}`;
             }
         }
     }
@@ -305,7 +324,7 @@ async function carregarKpis() {
 async function carregarAuditorias() {
     const { data, error } = await supabaseClient
         .from("auditorias")
-        .select("id, tipo, data_auditoria, localizacoes(nome), nao_conformidades(id)")
+        .select("id, tipo, data_auditoria, zonas_auditoria(nome), nao_conformidades(id)")
         .order("data_auditoria", { ascending: false })
         .limit(30);
     if (error) { console.error(error); return; }
@@ -317,7 +336,7 @@ async function carregarAuditorias() {
         tr.innerHTML = `
             <td data-rotulo="Tipo">${escaparHtml(NOME_TIPO_AUDITORIA[au.tipo] ?? au.tipo)}</td>
             <td data-rotulo="Data">${formatarData(au.data_auditoria)}</td>
-            <td data-rotulo="Zona">${escaparHtml(au.localizacoes?.nome ?? "—")}</td>
+            <td data-rotulo="Zona">${escaparHtml(au.zonas_auditoria?.nome ?? "—")}</td>
             <td data-rotulo="Não-conformidades">${au.nao_conformidades?.length ?? 0}</td>
             <td data-rotulo="Acção"><button class="secundario" onclick="apagarAuditoria('${au.id}')" style="padding:4px 10px; font-size:12px;">Apagar</button></td>
         `;

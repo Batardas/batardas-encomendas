@@ -71,6 +71,33 @@
 
 <section class="painel" data-secao="embalamento">
     <div class="cartao">
+        <h2>Plano de embalamento</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Planeia o que embalar num dia a partir de lotes já produzidos — exporta em PDF para a equipa saber o que fazer, mesmo sem entrar no site.
+        </p>
+        <div class="linha-form">
+            <input id="peData" type="date">
+            <button class="secundario" id="btnExportarPlanoEmbalamento"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF</button>
+        </div>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="peArtigoTexto" placeholder="Pesquisar produto (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="peArtigo">
+                <div id="peArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="peLote" disabled><option value="">Escolhe o produto primeiro</option></select>
+        </div>
+        <div class="linha-form">
+            <input id="peQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade a embalar">
+            <button id="btnAdicionarPlanoEmbalamento">Adicionar ao plano</button>
+        </div>
+        <table style="margin-top:16px;">
+            <thead><tr><th>Produto</th><th>Lote</th><th>Quantidade</th><th></th></tr></thead>
+            <tbody id="corpoPlanoEmbalamento"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
         <h2>Por embalar</h2>
         <table>
             <thead><tr><th>Cliente</th><th>Entrega</th><th>Acção</th></tr></thead>
@@ -140,10 +167,16 @@
         </div>
         <div class="linha-form">
             <select id="mUnidade">
-                <option value="un">Unidades</option>
-                <option value="pack">Packs</option>
-                <option value="caixa">Caixas</option>
-                <option value="palete">Paletes</option>
+                <option value="un">Unidade</option>
+                <option value="kg">Kg</option>
+                <option value="l">Litro</option>
+                <option value="mil">Milheiro</option>
+                <option value="pack">Pack</option>
+                <option value="pack2">Pack 2</option>
+                <option value="pack4">Pack 4</option>
+                <option value="pack6">Pack 6</option>
+                <option value="caixa">Caixa</option>
+                <option value="palete">Palete</option>
             </select>
             <input id="mQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade">
         </div>
@@ -267,6 +300,9 @@ async function iniciar() {
     await carregarPedidosPendentes();
     await carregarPorEmbalar();
     await activarPesquisaArtigo("emArtigoTexto", "emArtigo", "emArtigoResultados");
+    await activarPesquisaArtigo("peArtigoTexto", "peArtigo", "peArtigoResultados", (artigoId) => carregarLotesPaParaEmbalar(artigoId));
+    document.getElementById("peData").valueAsDate = new Date();
+    await carregarPlanoEmbalamentoDoDia();
     await carregarListaZonas();
     await carregarStockPorZona();
     await carregarInventariosPendentes();
@@ -313,7 +349,7 @@ function actualizarRotuloUnidade() {
     const loteSelect = document.getElementById("mLoteOrigem");
     const opcaoEscolhida = loteSelect.options[loteSelect.selectedIndex];
     const unidadeReal = opcaoEscolhida?.dataset.unidade || "UN";
-    document.getElementById("mUnidade").options[0].textContent = unidadeReal === "UN" ? "Unidades" : unidadeReal;
+    document.getElementById("mUnidade").options[0].textContent = unidadeReal === "UN" ? "Unidade" : unidadeReal;
 }
 document.getElementById("mLoteOrigem").addEventListener("change", actualizarRotuloUnidade);
 
@@ -755,6 +791,105 @@ document.getElementById("btnConcluirInventario").addEventListener("click", async
 let encomendaEmbalarId = null;
 let materiaisEmbalagemActual = [];
 let quebrasEmbalagemActual = [];
+
+// --- Plano de embalamento --------------------------------------------------
+let itensPlanoEmbalamento = [];
+
+async function carregarLotesPaParaEmbalar(artigoId) {
+    const select = document.getElementById("peLote");
+    if (!artigoId) {
+        select.disabled = true;
+        select.innerHTML = `<option value="">Escolhe o produto primeiro</option>`;
+        return;
+    }
+    const { data, error } = await supabaseClient
+        .from("lotes_producao")
+        .select("lote_id, numero_lote, quantidade_produzida")
+        .eq("artigo_id", artigoId)
+        .gt("quantidade_produzida", 0)
+        .order("data_producao", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    select.disabled = false;
+    select.innerHTML = data.length
+        ? data.map((l) => `<option value="${l.lote_id}">${escaparHtml(l.numero_lote)} (${l.quantidade_produzida} disponíveis)</option>`).join("")
+        : `<option value="">Sem lotes com stock deste produto</option>`;
+}
+
+document.getElementById("btnAdicionarPlanoEmbalamento").addEventListener("click", async () => {
+    const loteId = document.getElementById("peLote").value;
+    const loteTexto = document.getElementById("peLote").selectedOptions[0]?.textContent;
+    const nomeProduto = document.getElementById("peArtigoTexto").value.trim();
+    const quantidade = Number(document.getElementById("peQuantidade").value);
+    const dataPlano = document.getElementById("peData").value;
+
+    if (!loteId || !quantidade || !dataPlano) { toast("Escolhe o produto, o lote, a quantidade e a data.", "erro"); return; }
+
+    const { error } = await supabaseClient.from("plano_embalamento").insert({
+        lote_producao_id: loteId, quantidade, data_planeada: dataPlano,
+    });
+    if (error) { toast("Erro ao adicionar: " + traduzirErro(error.message), "erro"); return; }
+
+    toast("Adicionado ao plano.", "sucesso");
+    document.getElementById("peArtigoTexto").value = "";
+    document.getElementById("peArtigo").value = "";
+    document.getElementById("peQuantidade").value = "";
+    carregarLotesPaParaEmbalar(null);
+    carregarPlanoEmbalamentoDoDia();
+});
+
+async function carregarPlanoEmbalamentoDoDia() {
+    const dataPlano = document.getElementById("peData").value;
+    if (!dataPlano) return;
+    const { data, error } = await supabaseClient
+        .from("plano_embalamento")
+        .select("id, quantidade, lotes_producao(numero_lote, produto)")
+        .eq("data_planeada", dataPlano)
+        .order("criado_em", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    itensPlanoEmbalamento = data ?? [];
+    const corpo = document.getElementById("corpoPlanoEmbalamento");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Nada planeado para este dia.</td></tr>`;
+    data.forEach((item) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Produto">${escaparHtml(item.lotes_producao?.produto ?? "—")}</td>
+            <td data-rotulo="Lote" class="mono">${escaparHtml(item.lotes_producao?.numero_lote ?? "—")}</td>
+            <td data-rotulo="Quantidade">${item.quantidade}</td>
+            <td data-rotulo=""><button class="secundario" data-id="${item.id}" style="padding:4px 10px; font-size:12px;">Remover</button></td>
+        `;
+        tr.querySelector("button").addEventListener("click", () => removerDoPlanoEmbalamento(item.id));
+        corpo.appendChild(tr);
+    });
+}
+
+async function removerDoPlanoEmbalamento(id) {
+    const { error } = await supabaseClient.from("plano_embalamento").delete().eq("id", id);
+    if (error) { toast("Erro ao remover: " + traduzirErro(error.message), "erro"); return; }
+    carregarPlanoEmbalamentoDoDia();
+}
+
+document.getElementById("peData").addEventListener("change", carregarPlanoEmbalamentoDoDia);
+
+document.getElementById("btnExportarPlanoEmbalamento").addEventListener("click", async () => {
+    if (!itensPlanoEmbalamento.length) { toast("Nada planeado para exportar.", "erro"); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const dataPlano = document.getElementById("peData").value;
+    const startY = await iniciarPdfComMarca(doc, "Plano de embalamento", `Dia ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`);
+
+    doc.autoTable({
+        startY,
+        head: [["Produto", "Lote", "Quantidade"]],
+        body: itensPlanoEmbalamento.map((i) => [i.lotes_producao?.produto ?? "—", i.lotes_producao?.numero_lote ?? "—", `${i.quantidade}`]),
+        styles: { fontSize: 11, cellPadding: 4 },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
+    });
+
+    doc.save(`plano_embalamento_${dataPlano}.pdf`);
+});
 
 async function carregarPorEmbalar() {
     const { data, error } = await supabaseClient
