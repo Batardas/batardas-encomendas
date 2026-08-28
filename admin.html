@@ -1425,16 +1425,37 @@ document.getElementById("btnCriarZona").addEventListener("click", async () => {
 
 // --- Gestão de utilizadores ------------------------------------------------
 async function chamarGestaoUtilizadores(corpo) {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    const resposta = await fetch(`${SUPABASE_URL}/functions/v1/gerir-utilizadores`, {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(corpo),
-    });
-    return resposta.json();
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session) return { error: "Sessão expirada — actualiza a página e entra outra vez." };
+
+        const resposta = await fetch(`${SUPABASE_URL}/functions/v1/gerir-utilizadores`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(corpo),
+        });
+
+        const texto = await resposta.text();
+        let dados;
+        try {
+            dados = JSON.parse(texto);
+        } catch {
+            // A resposta não é JSON — normalmente quer dizer que a função
+            // nem chegou a correr (404, erro de deploy, etc.), em vez de
+            // ter corrido e devolvido um erro normal.
+            return { error: `A função não respondeu correctamente (estado ${resposta.status}). Confirma em Supabase → Edge Functions se "gerir-utilizadores" está mesmo publicada.` };
+        }
+        if (!resposta.ok && !dados.error) {
+            return { error: `Erro ${resposta.status} ao contactar a função.` };
+        }
+        return dados;
+    } catch (erro) {
+        // Falha de rede/CORS antes sequer de chegar ao servidor.
+        return { error: "Não foi possível contactar o servidor: " + erro.message };
+    }
 }
 
 const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém", consulta: "Consulta" };
