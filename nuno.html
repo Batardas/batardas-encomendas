@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produção — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-tools-kitchen-2" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Painel de Produção</h1></div>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+    <div class="filtros">
+        <button data-estado="todos" class="filtro-activo">Todas</button>
+        <button data-estado="Registada">Registadas</button>
+        <button data-estado="Em Produção">Em Produção</button>
+        <button data-estado="Em Preparação">Em Preparação</button>
+        <button data-estado="Pronta">Prontas</button>
+        <button data-estado="Carregada">Carregadas</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr><th>Cliente</th><th>Entrega</th><th>Estado</th><th>Acção</th></tr>
+        </thead>
+        <tbody id="corpoTabela"></tbody>
+    </table>
+
+    <div class="cartao" style="margin-top:32px;">
+        <h2>Produção diária</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Se já produziste este artigo hoje, pergunta-se se queres somar ao lote existente ou criar um novo.
+        </p>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="pdArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="pdArtigo">
+                <div id="pdArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="pdCategoria">
+                <option value="P">P — Padaria/Pastelaria</option>
+                <option value="R">R — Refeições</option>
+                <option value="S">S — Salgados</option>
+            </select>
+        </div>
+        <div class="linha-form">
+            <input id="pdDataProducao" type="date">
+            <input id="pdNumeroProducao" type="number" min="1" placeholder="Nº de produção do dia">
+        </div>
+        <div class="linha-form">
+            <input id="pdQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade produzida">
+            <input id="pdValidade" type="date">
+        </div>
+        <p style="font-size:13px; color:var(--ink-suave); margin:4px 0 12px;">
+            Lote calculado: <code class="mono" id="pdLotePreview" style="font-size:15px; font-weight:600;">—</code>
+        </p>
+        <button id="btnRegistarProducao">Registar produção</button>
+        <p id="erroProducaoDiaria" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Plano de produção — o que vou produzir</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Adiciona os produtos que planeias fazer, e mostra logo de que matérias-primas precisas — para pedires ao armazém com antecedência ou avisares as compras.
+        </p>
+        <div class="linha-form">
+            <input id="ppData" type="date">
+        </div>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="ppArtigoTexto" placeholder="Produto a produzir..." autocomplete="off">
+                <input type="hidden" id="ppArtigo">
+                <div id="ppArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <input id="ppQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade planeada">
+        </div>
+        <button id="btnAdicionarPlano">Adicionar ao plano</button>
+        <table style="margin-top:16px;">
+            <thead><tr><th>Produto</th><th>Quantidade</th><th></th></tr></thead>
+            <tbody id="corpoPlanoProducao"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Matérias-primas necessárias</h2>
+        <div class="linha-form">
+            <button class="secundario" id="btnExportarNecessidades"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF para compras</button>
+            <button id="btnPedirEmFalta">Pedir ao armazém o que falta</button>
+        </div>
+        <table style="margin-top:12px;">
+            <thead><tr><th>Matéria-prima</th><th>Necessário</th><th>Stock actual</th><th>Em falta</th></tr></thead>
+            <tbody id="corpoNecessidades"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Pedir ao armazém</h2>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="fArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="fArtigo">
+                <div id="fArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <input id="fQuantidadePedido" type="number" min="1" placeholder="Quantidade">
+        </div>
+        <button id="btnPedir"><i class="ti ti-send" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Pedir</button>
+        <p id="erroPedido" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Os meus pedidos</h2>
+        <table>
+            <thead><tr><th>Artigo</th><th>Quantidade</th><th>Estado</th></tr></thead>
+            <tbody id="corpoPedidos"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Registar movimento de stock</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Para saídas do A4 e outros movimentos que dás directamente — chega ao Francisco por email para ele carregar no Primavera.
+        </p>
+        <div class="linha-form">
+            <select id="mTipo">
+                <option value="Entrada">Entrada</option>
+                <option value="Saída">Saída</option>
+                <option value="Transferência">Transferência</option>
+            </select>
+            <select id="mLoteOrigem"></select>
+        </div>
+        <div class="linha-form">
+            <select id="mUnidade">
+                <option value="un">Unidades</option>
+                <option value="pack">Packs</option>
+                <option value="caixa">Caixas</option>
+                <option value="palete">Paletes</option>
+            </select>
+            <input id="mQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade">
+        </div>
+        <div class="linha-form" id="linhaDestino" style="display:none;">
+            <select id="mLoteDestino"></select>
+            <input id="mQuantidadeDestino" type="number" min="0" step="0.01" placeholder="Quantidade no destino (se diferente)">
+        </div>
+        <div class="linha-form" id="linhaLocalizacoes" style="display:none;">
+            <select id="mLocalizacaoOrigem"><option value="">Zona de origem (opcional)</option></select>
+            <select id="mLocalizacaoDestino"><option value="">Zona de destino (opcional)</option></select>
+        </div>
+        <div class="linha-form">
+            <input id="mObservacoes" placeholder="Observações (opcional)">
+            <button id="btnMovimento"><i class="ti ti-device-floppy" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Registar</button>
+        </div>
+        <p id="erroMovimento" class="erro"></p>
+    </div>
+</main>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+let filtroActual = "todos";
+
+async function iniciar() {
+    const contexto = await exigirRole(["producao", "admin"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    await carregar();
+    await activarPesquisaArtigo("fArtigoTexto", "fArtigo", "fArtigoResultados");
+    await activarPesquisaArtigo("pdArtigoTexto", "pdArtigo", "pdArtigoResultados");
+    await activarPesquisaArtigo("ppArtigoTexto", "ppArtigo", "ppArtigoResultados");
+    await carregarPedidos();
+    await carregarLotesArtigo();
+    await carregarZonas();
+    await carregarPlanoDoDia();
+
+    // Actualiza sozinho quando alguém (tu, Fernando) mexer nas encomendas
+    supabaseClient
+        .channel("encomendas-nuno")
+        .on("postgres_changes", { event: "*", schema: "public", table: "encomendas" }, carregar)
+        .subscribe();
+
+    supabaseClient
+        .channel("pedidos-nuno")
+        .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_armazem" }, carregarPedidos)
+        .subscribe();
+}
+
+async function carregarLotesArtigo() {
+    const { data, error } = await supabaseClient
+        .from("lotes_artigo")
+        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao)")
+        .order("numero_lote");
+    if (error) { console.error(error); return; }
+
+    const opcoes = data.length
+        ? data.map((l) => `<option value="${l.lote_artigo_id}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
+        : `<option value="">Sem lotes carregados ainda</option>`;
+    document.getElementById("mLoteOrigem").innerHTML = opcoes;
+    document.getElementById("mLoteDestino").innerHTML = opcoes;
+}
+
+async function carregarZonas() {
+    const { data, error } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    if (error) { console.error(error); return; }
+    const opcoes = `<option value="">— nenhuma —</option>` + data.map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+    document.getElementById("mLocalizacaoOrigem").innerHTML = opcoes;
+    document.getElementById("mLocalizacaoDestino").innerHTML = opcoes;
+}
+
+document.getElementById("mTipo").addEventListener("change", (e) => {
+    const ehTransferencia = e.target.value === "Transferência";
+    document.getElementById("linhaDestino").style.display = ehTransferencia ? "grid" : "none";
+    document.getElementById("linhaLocalizacoes").style.display = ehTransferencia ? "grid" : "none";
+});
+
+document.getElementById("btnMovimento").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroMovimento");
+    erroEl.textContent = "";
+
+    const tipo = document.getElementById("mTipo").value;
+    const loteOrigem = document.getElementById("mLoteOrigem").value;
+    const unidade = document.getElementById("mUnidade").value;
+    const quantidade = Number(document.getElementById("mQuantidade").value);
+    const observacoes = document.getElementById("mObservacoes").value.trim();
+
+    if (!loteOrigem || !quantidade) {
+        erroEl.textContent = "Escolhe o lote e a quantidade.";
+        return;
+    }
+
+    const registo = {
+        tipo,
+        lote_artigo_id: loteOrigem,
+        unidade_movimentacao: unidade,
+        quantidade,
+        observacoes: observacoes || null,
+    };
+
+    if (tipo === "Transferência") {
+        const loteDestino = document.getElementById("mLoteDestino").value;
+        const quantidadeDestino = document.getElementById("mQuantidadeDestino").value;
+        const localizacaoOrigem = document.getElementById("mLocalizacaoOrigem").value;
+        const localizacaoDestino = document.getElementById("mLocalizacaoDestino").value;
+        if (!loteDestino) {
+            erroEl.textContent = "Escolhe o lote de destino para a transferência.";
+            return;
+        }
+        registo.lote_artigo_destino_id = loteDestino;
+        if (quantidadeDestino) registo.quantidade_destino = Number(quantidadeDestino);
+        if (localizacaoOrigem) registo.localizacao_origem_id = localizacaoOrigem;
+        if (localizacaoDestino) registo.localizacao_destino_id = localizacaoDestino;
+    }
+
+    const { error } = await supabaseClient.from("movimentos_stock").insert(registo);
+    if (error) { erroEl.textContent = "Erro ao registar: " + traduzirErro(error.message); return; }
+
+    document.getElementById("mQuantidade").value = "";
+    document.getElementById("mObservacoes").value = "";
+    carregarLotesArtigo();
+    toast("Movimento registado — o Francisco foi avisado.", "sucesso");
+});
+
+async function carregarPedidos() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { data, error } = await supabaseClient
+        .from("pedidos_armazem")
+        .select("quantidade, estado, artigos(designacao)")
+        .eq("solicitado_por", session.user.id)
+        .order("data_pedido", { ascending: false })
+        .limit(15);
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoPedidos");
+    corpo.innerHTML = data.length ? "" :
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Ainda não pediste nada.</td></tr>`;
+    data.forEach((p) => {
+        const tr = document.createElement("tr");
+        const corBadge = p.estado === "Atendido" ? "Carregada" : "Registada";
+        tr.innerHTML = `
+            <td data-rotulo="Artigo">${escaparHtml(p.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Quantidade">${p.quantidade}</td>
+            <td data-rotulo="Estado"><span class="badge ${corBadge}">${p.estado}</span></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+document.getElementById("btnPedir").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroPedido");
+    erroEl.textContent = "";
+    const artigoId = document.getElementById("fArtigo").value;
+    const quantidade = Number(document.getElementById("fQuantidadePedido").value);
+
+    if (!artigoId || !quantidade) {
+        erroEl.textContent = "Escolhe o artigo e a quantidade.";
+        return;
+    }
+
+    const { error } = await supabaseClient
+        .from("pedidos_armazem")
+        .insert({ artigo_id: artigoId, quantidade });
+    if (error) { erroEl.textContent = "Erro ao pedir: " + error.message; return; }
+
+    document.getElementById("fQuantidadePedido").value = "";
+    document.getElementById("fArtigoTexto").value = "";
+    document.getElementById("fArtigo").value = "";
+    carregarPedidos();
+    toast("Pedido enviado ao armazém.", "sucesso");
+});
+
+async function carregar() {
+    let query = supabaseClient
+        .from("encomendas")
+        .select(`
+            encomenda_id, data_entrega_pretendida, estado, clientes(nome),
+            linhas_encomenda(produto, quantidade_pedida, unidade_movimentacao, quantidade_base, artigo_id)
+        `)
+        .order("data_entrega_pretendida", { ascending: true });
+    if (filtroActual !== "todos") query = query.eq("estado", filtroActual);
+
+    const { data, error } = await query;
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoTabela");
+    corpo.innerHTML = "";
+    if (!data.length) {
+        corpo.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem encomendas neste filtro.</td></tr>`;
+        return;
+    }
+
+    // Materiais necessários (BOM) só fazem sentido para quem ainda está por
+    // produzir — evita pedidos desnecessários quando o filtro mostra tudo.
+    const artigosParaExplodir = [...new Set(
+        data.filter((e) => e.estado === "Registada" || e.estado === "Em Produção")
+            .flatMap((e) => e.linhas_encomenda.map((l) => l.artigo_id))
+            .filter(Boolean)
+    )];
+    const materiaisPorArtigo = artigosParaExplodir.length ? await carregarMateriaisNecessarios(artigosParaExplodir) : {};
+
+    data.forEach((enc) => {
+        const tr = document.createElement("tr");
+        const classeEstado = CLASSE_ESTADO[enc.estado] ?? "Registada";
+        const acao = enc.estado === "Registada" || enc.estado === "Em Produção"
+            ? `<button onclick="marcarProduzida('${enc.encomenda_id}')"><i class="ti ti-check" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Marcar produção concluída</button>`
+            : "—";
+
+        const produtos = enc.linhas_encomenda.map((l) => `${escaparHtml(l.produto)} — ${l.quantidade_pedida} ${l.unidade_movimentacao}`).join("<br>");
+
+        let materiais = "";
+        if (enc.estado === "Registada" || enc.estado === "Em Produção") {
+            const somaPorComponente = {};
+            enc.linhas_encomenda.forEach((l) => {
+                (materiaisPorArtigo[l.artigo_id] ?? []).forEach((c) => {
+                    const necessario = c.quantidade_por_unidade * Number(l.quantidade_base ?? 0);
+                    somaPorComponente[c.nome] = (somaPorComponente[c.nome] ?? 0) + necessario;
+                });
+            });
+            const linhasMateriais = Object.entries(somaPorComponente);
+            materiais = linhasMateriais.length
+                ? `<div style="font-size:12px; color:var(--ink-suave); margin-top:6px;"><i class="ti ti-clipboard-list" style="font-size:12px; vertical-align:-1px;" aria-hidden="true"></i> ${linhasMateriais.map(([nome, qtd]) => `${nome}: ${qtd.toFixed(2)}`).join(" · ")}</div>`
+                : `<div style="font-size:12px; color:var(--ink-fraca); margin-top:6px;">Sem BOM definida</div>`;
+        }
+
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(enc.clientes?.nome ?? "—")}<div style="font-size:13px; color:var(--ink-suave); margin-top:4px;">${produtos || "—"}</div>${materiais}</td>
+            <td data-rotulo="Entrega">${formatarData(enc.data_entrega_pretendida)}</td>
+            <td data-rotulo="Estado"><span class="badge ${classeEstado}">${enc.estado}</span></td>
+            <td data-rotulo="Acção">${acao}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+// Explode a BOM para os artigos indicados, devolvendo por artigo a lista de
+// componentes e a quantidade necessária somando todas as linhas desse artigo
+// nesta lista de encomendas — não faz sentido mostrar a BOM "por unidade",
+// o Nuno quer saber quanto precisa para o que tem para fazer agora.
+async function carregarMateriaisNecessarios(artigoIds) {
+    const { data, error } = await supabaseClient
+        .from("bom_componentes")
+        .select("produto_id, quantidade_por_unidade, componente:componente_id(designacao)")
+        .in("produto_id", artigoIds);
+    if (error) { console.error(error); return {}; }
+
+    const porArtigo = {};
+    data.forEach((b) => {
+        if (!porArtigo[b.produto_id]) porArtigo[b.produto_id] = [];
+        porArtigo[b.produto_id].push({ nome: escaparHtml(b.componente?.designacao ?? "—"), quantidade_por_unidade: b.quantidade_por_unidade });
+    });
+    return porArtigo;
+}
+
+async function marcarProduzida(encomendaId) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { error } = await supabaseClient
+        .from("encomendas")
+        .update({
+            estado: "Em Preparação",
+            data_conclusao_producao: new Date().toISOString(),
+            concluido_producao_por: session.user.id,
+        })
+        .eq("encomenda_id", encomendaId);
+    if (error) { toast("Erro ao actualizar: " + error.message, "erro"); return; }
+    carregar();
+    toast("Produção marcada como concluída — passou para preparação.", "sucesso");
+}
+
+document.querySelectorAll(".filtros button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        document.querySelector(".filtro-activo")?.classList.remove("filtro-activo");
+        btn.classList.add("filtro-activo");
+        filtroActual = btn.dataset.estado;
+        carregar();
+    });
+});
+
+// --- Produção diária (criar/somar lotes de produto acabado) ---------------
+function calcularPreviewLoteDiario() {
+    const dataProducao = document.getElementById("pdDataProducao").value;
+    const categoria = document.getElementById("pdCategoria").value;
+    const numeroProducao = document.getElementById("pdNumeroProducao").value;
+    const preview = document.getElementById("pdLotePreview");
+    if (dataProducao && numeroProducao) {
+        preview.textContent = calcularCodigoLote(dataProducao, categoria, numeroProducao);
+    } else {
+        preview.textContent = "—";
+    }
+    const campoValidade = document.getElementById("pdValidade");
+    if (dataProducao && !campoValidade.dataset.editadoManualmente) {
+        campoValidade.value = calcularValidadePadrao(dataProducao);
+    }
+}
+document.getElementById("pdValidade").addEventListener("input", (e) => {
+    e.target.dataset.editadoManualmente = "1";
+});
+["pdDataProducao", "pdCategoria", "pdNumeroProducao"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", calcularPreviewLoteDiario);
+});
+document.getElementById("pdDataProducao").valueAsDate = new Date();
+calcularPreviewLoteDiario();
+
+document.getElementById("btnRegistarProducao").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroProducaoDiaria");
+    erroEl.textContent = "";
+
+    const artigoId = document.getElementById("pdArtigo").value;
+    const dataProducao = document.getElementById("pdDataProducao").value;
+    const categoria = document.getElementById("pdCategoria").value;
+    const numeroProducao = document.getElementById("pdNumeroProducao").value;
+    const quantidade = Number(document.getElementById("pdQuantidade").value);
+    const validade = document.getElementById("pdValidade").value || null;
+
+    if (!artigoId || !dataProducao || !numeroProducao || !quantidade) {
+        erroEl.textContent = "Preenche produto, data, número de produção e quantidade.";
+        return;
+    }
+
+    const artigo = await obterArtigoPorId(artigoId);
+    const numeroLote = calcularCodigoLote(dataProducao, categoria, numeroProducao);
+
+    // Se já houver um lote deste artigo produzido hoje, pergunta se soma
+    // a esse em vez de criar duplicado — é o que evita teres 3 lotes
+    // separados no mesmo dia para o mesmo produto.
+    const { data: lotesExistentes } = await supabaseClient
+        .from("lotes_producao")
+        .select("lote_id, numero_lote, quantidade_produzida")
+        .eq("artigo_id", artigoId)
+        .eq("data_producao", dataProducao);
+
+    let loteAlvo = null;
+    if (lotesExistentes && lotesExistentes.length) {
+        const lista = lotesExistentes.map((l) => `• ${l.numero_lote} (${l.quantidade_produzida} produzidas até agora)`).join("\n");
+        const escolha = prompt(
+            `Já existe ${lotesExistentes.length > 1 ? "lotes" : "um lote"} deste produto hoje:\n${lista}\n\n` +
+            `Escreve o número do lote a que queres SOMAR esta produção, ou deixa em branco para criar um lote novo (${numeroLote}).`
+        );
+        if (escolha === null) return; // cancelou
+        if (escolha.trim()) {
+            loteAlvo = lotesExistentes.find((l) => l.numero_lote === escolha.trim());
+            if (!loteAlvo) { erroEl.textContent = "Esse número de lote não corresponde a nenhum dos listados."; return; }
+        }
+    }
+
+    if (loteAlvo) {
+        const { error } = await supabaseClient
+            .from("lotes_producao")
+            .update({ quantidade_produzida: Number(loteAlvo.quantidade_produzida) + quantidade })
+            .eq("lote_id", loteAlvo.lote_id);
+        if (error) { erroEl.textContent = "Erro ao somar ao lote: " + traduzirErro(error.message); return; }
+        toast(`Somado ao lote ${loteAlvo.numero_lote}.`, "sucesso");
+    } else {
+        const { error } = await supabaseClient
+            .from("lotes_producao")
+            .insert({
+                produto: artigo?.designacao ?? "",
+                artigo_id: artigoId,
+                numero_lote: numeroLote,
+                categoria,
+                data_producao: dataProducao,
+                validade,
+                quantidade_produzida: quantidade,
+            });
+        if (error) { erroEl.textContent = "Erro ao criar lote: " + traduzirErro(error.message); return; }
+        toast(`Lote ${numeroLote} criado.`, "sucesso");
+    }
+
+    document.getElementById("pdQuantidade").value = "";
+    document.getElementById("pdNumeroProducao").value = "";
+    document.getElementById("pdValidade").value = "";
+    delete document.getElementById("pdValidade").dataset.editadoManualmente;
+    document.getElementById("pdArtigoTexto").value = "";
+    document.getElementById("pdArtigo").value = "";
+    document.getElementById("pdLotePreview").textContent = "—";
+});
+
+// --- Plano de produção e matérias-primas necessárias -----------------------
+let itensPlanoProducao = [];
+
+function amanha() {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+}
+document.getElementById("ppData").value = amanha();
+
+async function carregarPlanoDoDia() {
+    const dataPlano = document.getElementById("ppData").value;
+    const { data, error } = await supabaseClient
+        .from("plano_producao")
+        .select("id, artigo_id, quantidade, artigos(designacao)")
+        .eq("data_planeada", dataPlano)
+        .order("criado_em", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    itensPlanoProducao = (data ?? []).map((l) => ({ artigo_id: l.artigo_id, quantidade: Number(l.quantidade) }));
+
+    const corpo = document.getElementById("corpoPlanoProducao");
+    corpo.innerHTML = data.length ? "" :
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Ainda não adicionaste nada ao plano deste dia.</td></tr>`;
+    data.forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Produto">${escaparHtml(l.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Quantidade">${l.quantidade}</td>
+            <td data-rotulo=""><button class="secundario" data-id="${l.id}" style="padding:4px 10px; font-size:12px;">Remover</button></td>
+        `;
+        tr.querySelector("button").addEventListener("click", () => removerDoPlano(l.id));
+        corpo.appendChild(tr);
+    });
+
+    await recalcularNecessidades();
+}
+
+async function removerDoPlano(id) {
+    await supabaseClient.from("plano_producao").delete().eq("id", id);
+    carregarPlanoDoDia();
+}
+
+document.getElementById("ppData").addEventListener("change", carregarPlanoDoDia);
+
+document.getElementById("btnAdicionarPlano").addEventListener("click", async () => {
+    const artigoId = document.getElementById("ppArtigo").value;
+    const quantidade = Number(document.getElementById("ppQuantidade").value);
+    const dataPlano = document.getElementById("ppData").value;
+    if (!artigoId || !quantidade || !dataPlano) return;
+
+    const { error } = await supabaseClient
+        .from("plano_producao")
+        .insert({ artigo_id: artigoId, quantidade, data_planeada: dataPlano });
+    if (error) { toast("Erro ao adicionar: " + traduzirErro(error.message), "erro"); return; }
+
+    document.getElementById("ppQuantidade").value = "";
+    document.getElementById("ppArtigoTexto").value = "";
+    document.getElementById("ppArtigo").value = "";
+    carregarPlanoDoDia();
+});
+
+let ultimasNecessidades = [];
+
+async function recalcularNecessidades() {
+    ultimasNecessidades = await calcularNecessidadesMateriais(itensPlanoProducao);
+    const corpo = document.getElementById("corpoNecessidades");
+    corpo.innerHTML = ultimasNecessidades.length ? "" :
+        `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Adiciona produtos ao plano para veres as matérias-primas necessárias.</td></tr>`;
+    ultimasNecessidades.forEach((n) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Matéria-prima">${escaparHtml(n.designacao)}</td>
+            <td data-rotulo="Necessário">${n.necessario.toFixed(2)}</td>
+            <td data-rotulo="Stock actual">${n.stock.toFixed(2)}</td>
+            <td data-rotulo="Em falta">${n.em_falta > 0 ? `<strong style="color:var(--perigo);">${n.em_falta.toFixed(2)}</strong>` : "—"}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+document.getElementById("btnExportarNecessidades").addEventListener("click", () => {
+    if (!ultimasNecessidades.length) { toast("Nada para exportar ainda.", "erro"); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const dataPlano = document.getElementById("ppData").value;
+    doc.setFontSize(16);
+    doc.text("Batardas — Matérias-primas necessárias", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Plano de produção de ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+
+    doc.autoTable({
+        startY: 28,
+        head: [["Matéria-prima", "Necessário", "Stock actual", "Em falta"]],
+        body: ultimasNecessidades.map((n) => [n.designacao, n.necessario.toFixed(2), n.stock.toFixed(2), n.em_falta > 0 ? n.em_falta.toFixed(2) : "—"]),
+        styles: { fontSize: 10, cellPadding: 3 },
+        headStyles: { fillColor: [28, 31, 38] },
+        didParseCell: (dados) => {
+            if (dados.column.index === 3 && dados.cell.raw !== "—") {
+                dados.cell.styles.textColor = [188, 32, 46];
+                dados.cell.styles.fontStyle = "bold";
+            }
+        },
+    });
+
+    doc.save(`materias_primas_necessarias_${dataPlano}.pdf`);
+});
+
+document.getElementById("btnPedirEmFalta").addEventListener("click", async () => {
+    const emFalta = ultimasNecessidades.filter((n) => n.em_falta > 0);
+    if (!emFalta.length) { toast("Não há nada em falta neste momento.", "info"); return; }
+    if (!confirm(`Vai criar ${emFalta.length} pedido(s) ao armazém, um por cada matéria-prima em falta. Confirmas?`)) return;
+
+    const pedidos = emFalta.map((n) => ({ artigo_id: n.artigo_id, quantidade: n.em_falta }));
+    const { error } = await supabaseClient.from("pedidos_armazem").insert(pedidos);
+    if (error) { toast("Erro ao criar pedidos: " + traduzirErro(error.message), "erro"); return; }
+    toast(`${pedidos.length} pedido(s) criado(s) — o Fernando foi avisado por email.`, "sucesso");
+    carregarPedidos();
+});
+
+iniciar();
+</script>
+</body>
+</html>

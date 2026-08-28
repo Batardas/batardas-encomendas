@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consulta de Encomendas — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-eye" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Estado das Encomendas</h1></div>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">No prazo (30 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiNoPrazo">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Atrasadas (30 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0; color:var(--perigo);" id="kpiAtrasadas">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Custo médio produção (90 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiCustoMedio">—</p>
+        </div>
+    </div>
+
+    <div class="cartao">
+        <h2>Encomendas por estado</h2>
+        <div id="blocoFunil" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>Volume por semana</h2>
+        <div id="blocoVolume" style="display:flex; align-items:flex-end; gap:6px; height:120px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>Clientes com mais volume (30 dias)</h2>
+        <table>
+            <thead><tr><th>Cliente</th><th>Encomendas</th></tr></thead>
+            <tbody id="corpoTopClientes"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoValorPotencial" style="display:none;">
+        <h2>Valor de stock e potencial por cliente</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            "Potencial" é hipotético — assume todo o stock desse produto vendido a esse cliente ao preço acordado. Não soma entre clientes.
+        </p>
+        <table>
+            <thead><tr><th>Cliente</th><th>Produto</th><th>Stock disponível</th><th>Preço/un</th><th>Valor potencial</th></tr></thead>
+            <tbody id="corpoValorPotencial"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoEvolucaoCustos" style="display:none;">
+        <h2>Evolução de custos — matérias-primas e utilitários</h2>
+        <div class="linha-form">
+            <select id="evTipo">
+                <option value="artigo">Matéria-prima / artigo</option>
+                <option value="utilitario">Utilitário</option>
+            </select>
+            <div class="campo-pesquisa-artigo" id="blocoEvArtigo">
+                <input type="text" id="evArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="evAlvo">
+                <div id="evArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="evAlvoUtilitario" style="display:none;"></select>
+        </div>
+        <div id="blocoEvolucaoCustos" style="display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:16px;"></div>
+        <p id="semDadosEvolucao" style="font-size:13px; color:var(--ink-suave); display:none;">Sem histórico suficiente para este item ainda.</p>
+    </div>
+
+    <div class="cartao">
+        <h2>Encomendas</h2>
+        <div class="linha-form">
+            <input id="pesquisa" placeholder="Pesquisar por cliente...">
+            <button class="secundario" id="btnExportarCsv"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+            <button class="secundario" id="btnExportarPdf"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF</button>
+        </div>
+        <table>
+            <thead><tr><th>Cliente</th><th>Entrega</th><th>Estado</th></tr></thead>
+            <tbody id="corpoTabela"></tbody>
+        </table>
+    </div>
+</main>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+let todasEncomendas = [];
+
+async function iniciar() {
+    const contexto = await exigirRole(["consulta", "admin", "producao", "armazem"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    await carregar();
+    await carregarKpis();
+
+    // Preços de contrato e evolução de custos são informação comercial
+    // sensível — só admin e consulta veem estas secções. A RLS já bloqueia
+    // os dados para o Nuno/Fernando, mas isto evita mostrar-lhes cartões
+    // vazios sem explicação.
+    if (contexto.perfil.role === "admin" || contexto.perfil.role === "consulta") {
+        document.getElementById("cartaoValorPotencial").style.display = "block";
+        document.getElementById("cartaoEvolucaoCustos").style.display = "block";
+        await carregarValorPotencial();
+        await activarPesquisaArtigo("evArtigoTexto", "evAlvo", "evArtigoResultados", carregarGraficoEvolucao);
+        await carregarOpcoesEvolucao();
+    }
+
+    supabaseClient
+        .channel("encomendas-consulta")
+        .on("postgres_changes", { event: "*", schema: "public", table: "encomendas" }, () => {
+            carregar();
+            carregarKpis();
+        })
+        .subscribe();
+}
+
+async function carregarValorPotencial() {
+    const { data: precos, error } = await supabaseClient
+        .from("precos_cliente")
+        .select("preco_unitario, clientes(nome), artigos(artigo_id, designacao)")
+        .order("criado_em", { ascending: false });
+    if (error) { console.error(error); return; }
+
+    const { data: stocks } = await supabaseClient.from("lotes_artigo").select("artigo_id, quantidade_atual");
+    const stockPorArtigo = {};
+    (stocks ?? []).forEach((s) => { stockPorArtigo[s.artigo_id] = (stockPorArtigo[s.artigo_id] || 0) + Number(s.quantidade_atual); });
+
+    const corpo = document.getElementById("corpoValorPotencial");
+    corpo.innerHTML = precos.length ? "" :
+        `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem preços de contrato carregados ainda.</td></tr>`;
+    precos.forEach((p) => {
+        const stock = stockPorArtigo[p.artigos?.artigo_id] || 0;
+        const potencial = stock * Number(p.preco_unitario);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(p.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Produto">${escaparHtml(p.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Stock disponível">${stock}</td>
+            <td data-rotulo="Preço/un">€${Number(p.preco_unitario).toFixed(4)}</td>
+            <td data-rotulo="Valor potencial"><strong>€${potencial.toFixed(2)}</strong></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+async function carregarOpcoesEvolucao() {
+    const tipo = document.getElementById("evTipo").value;
+    document.getElementById("blocoEvArtigo").style.display = tipo === "artigo" ? "flex" : "none";
+    document.getElementById("evAlvoUtilitario").style.display = tipo === "utilitario" ? "block" : "none";
+
+    if (tipo === "utilitario") {
+        const { data } = await supabaseClient.from("utilitarios_custos").select("utilitario");
+        const nomes = [...new Set((data ?? []).map((u) => u.utilitario))];
+        document.getElementById("evAlvoUtilitario").innerHTML = nomes.map((n) => `<option value="${escaparHtml(n)}">${escaparHtml(n)}</option>`).join("");
+    }
+    await carregarGraficoEvolucao();
+}
+
+async function carregarGraficoEvolucao() {
+    const tipo = document.getElementById("evTipo").value;
+    const alvo = tipo === "artigo" ? document.getElementById("evAlvo").value : document.getElementById("evAlvoUtilitario").value;
+    const bloco = document.getElementById("blocoEvolucaoCustos");
+    const avisoVazio = document.getElementById("semDadosEvolucao");
+    bloco.innerHTML = "";
+    if (!alvo) { avisoVazio.style.display = "block"; return; }
+
+    let pontos = [];
+    if (tipo === "artigo") {
+        const { data } = await supabaseClient
+            .from("historico_custos_artigo")
+            .select("custo_unitario, registado_em")
+            .eq("artigo_id", alvo)
+            .order("registado_em", { ascending: true });
+        pontos = (data ?? []).filter((p) => p.custo_unitario != null).map((p) => ({ valor: Number(p.custo_unitario), data: p.registado_em }));
+
+        const { data: artigoActual } = await supabaseClient.from("custos_artigo").select("custo_unitario").eq("artigo_id", alvo).maybeSingle();
+        if (artigoActual?.custo_unitario != null) pontos.push({ valor: Number(artigoActual.custo_unitario), data: new Date().toISOString() });
+    } else {
+        const { data } = await supabaseClient
+            .from("utilitarios_custos")
+            .select("custo, periodo")
+            .eq("utilitario", alvo)
+            .order("periodo", { ascending: true });
+        pontos = (data ?? []).map((p) => ({ valor: Number(p.custo), data: p.periodo }));
+    }
+
+    if (pontos.length < 2) { avisoVazio.style.display = "block"; return; }
+    avisoVazio.style.display = "none";
+
+    const maxValor = Math.max(...pontos.map((p) => p.valor));
+    pontos.forEach((p) => {
+        const altura = Math.max(Math.round((p.valor / maxValor) * 100), 4);
+        const barra = document.createElement("div");
+        barra.title = `${formatarData(p.data)}: €${p.valor.toFixed(4)}`;
+        barra.style.cssText = `flex:1; background:var(--accent); border-radius:4px 4px 0 0; height:${altura}%;`;
+        bloco.appendChild(barra);
+    });
+}
+
+document.getElementById("evTipo").addEventListener("change", carregarOpcoesEvolucao);
+document.getElementById("evAlvoUtilitario").addEventListener("change", carregarGraficoEvolucao);
+
+async function carregar() {
+    const { data, error } = await supabaseClient
+        .from("encomendas")
+        .select("data_entrega_pretendida, estado, clientes(nome)")
+        .order("data_entrega_pretendida", { ascending: true })
+        .limit(200);
+    if (error) { console.error(error); return; }
+    todasEncomendas = data;
+    desenharTabela();
+}
+
+function desenharTabela() {
+    const termo = document.getElementById("pesquisa").value.trim().toLowerCase();
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
+    const filtradas = termo
+        ? todasEncomendas.filter((e) => (e.clientes?.nome ?? "").toLowerCase().includes(termo))
+        : todasEncomendas;
+
+    const corpo = document.getElementById("corpoTabela");
+    corpo.innerHTML = filtradas.length ? "" :
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Nenhuma encomenda encontrada.</td></tr>`;
+    filtradas.slice(0, 60).forEach((enc) => {
+        const classeEstado = CLASSE_ESTADO[enc.estado] ?? "Registada";
+        const dataEntrega = new Date(enc.data_entrega_pretendida + "T00:00:00");
+        const atrasada = enc.estado !== "Carregada" && dataEntrega <= hoje;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(enc.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Entrega"><span style="color:${atrasada ? "var(--perigo)" : "inherit"}; font-weight:${atrasada ? 600 : 400};">${formatarData(enc.data_entrega_pretendida)}${atrasada ? " — atrasada" : ""}</span></td>
+            <td data-rotulo="Estado"><span class="badge ${classeEstado}">${enc.estado}</span></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+document.getElementById("pesquisa").addEventListener("input", desenharTabela);
+
+async function carregarKpis() {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const ha30dias = new Date(hoje); ha30dias.setDate(ha30dias.getDate() - 30);
+    const iso30 = ha30dias.toISOString().slice(0, 10);
+    const isoHoje = hoje.toISOString().slice(0, 10);
+
+    const contagemEstados = {};
+    todasEncomendas.forEach((e) => { contagemEstados[e.estado] = (contagemEstados[e.estado] || 0) + 1; });
+    const blocoFunil = document.getElementById("blocoFunil");
+    blocoFunil.innerHTML = "";
+    Object.entries(contagemEstados).forEach(([estado, n]) => {
+        const classeEstado = CLASSE_ESTADO[estado] ?? "Registada";
+        const div = document.createElement("div");
+        div.innerHTML = `<span class="badge ${classeEstado}">${estado}</span> <strong style="margin-left:6px;">${n}</strong>`;
+        blocoFunil.appendChild(div);
+    });
+
+    const { data: recentes } = await supabaseClient
+        .from("encomendas")
+        .select("data_entrega_pretendida, estado")
+        .gte("data_entrega_pretendida", iso30)
+        .lte("data_entrega_pretendida", isoHoje);
+
+    let noPrazo = 0, atrasadas = 0;
+    (recentes ?? []).forEach((e) => {
+        if (e.estado === "Carregada") noPrazo++;
+        else atrasadas++;
+    });
+    document.getElementById("kpiNoPrazo").textContent = noPrazo;
+    document.getElementById("kpiAtrasadas").textContent = atrasadas;
+
+    const { data: volumeDados } = await supabaseClient
+        .from("encomendas")
+        .select("data_pedido")
+        .gte("data_pedido", new Date(hoje.getTime() - 56 * 86400000).toISOString());
+
+    const semanas = {};
+    (volumeDados ?? []).forEach((e) => {
+        const d = new Date(e.data_pedido);
+        const inicioSemana = new Date(d); inicioSemana.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        const chave = inicioSemana.toISOString().slice(0, 10);
+        semanas[chave] = (semanas[chave] || 0) + 1;
+    });
+    const chavesOrdenadas = Object.keys(semanas).sort();
+    const maxVolume = Math.max(1, ...Object.values(semanas));
+    const blocoVolume = document.getElementById("blocoVolume");
+    blocoVolume.innerHTML = "";
+    chavesOrdenadas.forEach((chave) => {
+        const altura = Math.round((semanas[chave] / maxVolume) * 100);
+        const barra = document.createElement("div");
+        barra.title = `${chave}: ${semanas[chave]} encomendas`;
+        barra.style.cssText = `flex:1; background:var(--accent); border-radius:4px 4px 0 0; height:${Math.max(altura, 4)}%;`;
+        blocoVolume.appendChild(barra);
+    });
+    if (!chavesOrdenadas.length) blocoVolume.innerHTML = `<p style="color:var(--ink-suave); font-size:13px;">Sem dados suficientes ainda.</p>`;
+
+    const { data: linhasPeriodo } = await supabaseClient
+        .from("encomendas")
+        .select("clientes(nome)")
+        .gte("data_pedido", ha30dias.toISOString());
+    const porCliente = {};
+    (linhasPeriodo ?? []).forEach((e) => {
+        const nome = e.clientes?.nome ?? "—";
+        porCliente[nome] = (porCliente[nome] || 0) + 1;
+    });
+    const topClientes = Object.entries(porCliente).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const corpoTop = document.getElementById("corpoTopClientes");
+    corpoTop.innerHTML = topClientes.length ? "" :
+        `<tr><td colspan="2" style="text-align:center; color:var(--ink-suave);">Sem dados suficientes ainda.</td></tr>`;
+    topClientes.forEach(([nome, n]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td data-rotulo="Cliente">${escaparHtml(nome)}</td><td data-rotulo="Encomendas">${n}</td>`;
+        corpoTop.appendChild(tr);
+    });
+
+    const { data: custos } = await supabaseClient
+        .from("lotes_producao")
+        .select("custo_medio_unitario")
+        .gte("data_producao", new Date(hoje.getTime() - 90 * 86400000).toISOString().slice(0, 10));
+    const valores = (custos ?? []).map((c) => c.custo_medio_unitario).filter((v) => v != null);
+    document.getElementById("kpiCustoMedio").textContent = valores.length
+        ? "€" + (valores.reduce((a, b) => a + b, 0) / valores.length).toFixed(4)
+        : "Sem BOM completa";
+}
+
+document.getElementById("btnExportarCsv").addEventListener("click", () => {
+    const cabecalho = ["Cliente", "Entrega", "Estado"];
+    const linhas = todasEncomendas.map((e) => [e.clientes?.nome ?? "—", e.data_entrega_pretendida, e.estado]);
+    const paraCsv = (v) => { const t = String(v ?? ""); return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const csv = [cabecalho, ...linhas].map((l) => l.map(paraCsv).join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `encomendas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById("btnExportarPdf").addEventListener("click", () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Batardas — Estado das encomendas", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+
+    const linhas = todasEncomendas.map((e) => [e.clientes?.nome ?? "—", formatarData(e.data_entrega_pretendida), e.estado]);
+    doc.autoTable({
+        startY: 28,
+        head: [["Cliente", "Entrega", "Estado"]],
+        body: linhas,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [32, 31, 28] },
+    });
+    doc.save(`encomendas-${new Date().toISOString().slice(0, 10)}.pdf`);
+});
+
+iniciar();
+</script>
+</body>
+</html>

@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparação / Armazém — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-package" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Preparação de Encomendas</h1></div>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+    <div class="cartao">
+        <h2>Para preparar (picking)</h2>
+        <table>
+            <thead><tr><th>Cliente</th><th>Lote a usar</th><th>Entrega</th><th>Acção</th></tr></thead>
+            <tbody id="corpoPreparacao"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Histórico recente</h2>
+        <table>
+            <thead><tr><th>Cliente</th><th>Estado</th></tr></thead>
+            <tbody id="corpoHistorico"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Pedidos de armazém pendentes</h2>
+        <table>
+            <thead><tr><th>Artigo</th><th>Quantidade</th><th>Acção</th></tr></thead>
+            <tbody id="corpoPedidosPendentes"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Registar movimento de stock</h2>
+        <div class="linha-form">
+            <select id="mTipo">
+                <option value="Entrada">Entrada</option>
+                <option value="Saída">Saída</option>
+                <option value="Transferência">Transferência</option>
+            </select>
+            <select id="mLoteOrigem"></select>
+        </div>
+        <div class="linha-form">
+            <select id="mUnidade">
+                <option value="un">Unidades</option>
+                <option value="pack">Packs</option>
+                <option value="caixa">Caixas</option>
+                <option value="palete">Paletes</option>
+            </select>
+            <input id="mQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade">
+        </div>
+        <div class="linha-form" id="linhaDestino" style="display:none;">
+            <select id="mLoteDestino"></select>
+            <input id="mQuantidadeDestino" type="number" min="0" step="0.01" placeholder="Quantidade no destino (se diferente)">
+        </div>
+        <div class="linha-form" id="linhaLocalizacoes" style="display:none;">
+            <select id="mLocalizacaoOrigem"><option value="">Zona de origem (opcional)</option></select>
+            <select id="mLocalizacaoDestino"><option value="">Zona de destino (opcional)</option></select>
+        </div>
+        <div class="linha-form">
+            <input id="mObservacoes" placeholder="Observações (opcional)">
+            <button id="btnMovimento"><i class="ti ti-device-floppy" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Registar</button>
+        </div>
+        <p id="erroMovimento" class="erro"></p>
+    </div>
+</main>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+async function iniciar() {
+    const contexto = await exigirRole(["armazem", "admin"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    await carregar();
+    await carregarLotesArtigo();
+    await carregarPedidosPendentes();
+    await carregarZonas();
+
+    supabaseClient
+        .channel("encomendas-fernando")
+        .on("postgres_changes", { event: "*", schema: "public", table: "encomendas" }, carregar)
+        .subscribe();
+
+    supabaseClient
+        .channel("pedidos-fernando")
+        .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_armazem" }, carregarPedidosPendentes)
+        .subscribe();
+}
+
+async function carregarLotesArtigo() {
+    const { data, error } = await supabaseClient
+        .from("lotes_artigo")
+        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao)")
+        .order("numero_lote");
+    if (error) { console.error(error); return; }
+
+    const opcoes = data.length
+        ? data.map((l) => `<option value="${l.lote_artigo_id}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
+        : `<option value="">Sem lotes carregados ainda</option>`;
+    document.getElementById("mLoteOrigem").innerHTML = opcoes;
+    document.getElementById("mLoteDestino").innerHTML = opcoes;
+}
+
+async function carregarPedidosPendentes() {
+    const { data, error } = await supabaseClient
+        .from("pedidos_armazem")
+        .select("pedido_id, quantidade, artigos(designacao)")
+        .eq("estado", "Pendente")
+        .order("data_pedido", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoPedidosPendentes");
+    corpo.innerHTML = data.length ? "" :
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Sem pedidos pendentes.</td></tr>`;
+    data.forEach((p) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Artigo">${escaparHtml(p.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Quantidade">${p.quantidade}</td>
+            <td data-rotulo="Acção"><button onclick="atenderPedido('${p.pedido_id}')"><i class="ti ti-check" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Atendido</button></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+async function atenderPedido(pedidoId) {
+    if (!confirm("Marcar este pedido como atendido? Não há forma de desfazer no site depois.")) return;
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { error } = await supabaseClient
+        .from("pedidos_armazem")
+        .update({ estado: "Atendido", atendido_por: session.user.id, data_atendimento: new Date().toISOString() })
+        .eq("pedido_id", pedidoId);
+    if (error) { toast("Erro ao atender: " + error.message, "erro"); return; }
+    carregarPedidosPendentes();
+    toast("Pedido marcado como atendido.", "sucesso");
+}
+
+async function carregarZonas() {
+    const { data, error } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    if (error) { console.error(error); return; }
+    const opcoes = `<option value="">— nenhuma —</option>` + data.map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+    document.getElementById("mLocalizacaoOrigem").innerHTML = opcoes;
+    document.getElementById("mLocalizacaoDestino").innerHTML = opcoes;
+}
+
+document.getElementById("mTipo").addEventListener("change", (e) => {
+    const ehTransferencia = e.target.value === "Transferência";
+    document.getElementById("linhaDestino").style.display = ehTransferencia ? "grid" : "none";
+    document.getElementById("linhaLocalizacoes").style.display = ehTransferencia ? "grid" : "none";
+});
+
+document.getElementById("btnMovimento").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroMovimento");
+    erroEl.textContent = "";
+
+    const tipo = document.getElementById("mTipo").value;
+    const loteOrigem = document.getElementById("mLoteOrigem").value;
+    const unidade = document.getElementById("mUnidade").value;
+    const quantidade = Number(document.getElementById("mQuantidade").value);
+    const observacoes = document.getElementById("mObservacoes").value.trim();
+
+    if (!loteOrigem || !quantidade) {
+        erroEl.textContent = "Escolhe o lote e a quantidade.";
+        return;
+    }
+
+    const registo = {
+        tipo,
+        lote_artigo_id: loteOrigem,
+        unidade_movimentacao: unidade,
+        quantidade,
+        observacoes: observacoes || null,
+    };
+
+    if (tipo === "Transferência") {
+        const loteDestino = document.getElementById("mLoteDestino").value;
+        const quantidadeDestino = document.getElementById("mQuantidadeDestino").value;
+        const localizacaoOrigem = document.getElementById("mLocalizacaoOrigem").value;
+        const localizacaoDestino = document.getElementById("mLocalizacaoDestino").value;
+        if (!loteDestino) {
+            erroEl.textContent = "Escolhe o lote de destino para a transferência.";
+            return;
+        }
+        registo.lote_artigo_destino_id = loteDestino;
+        if (quantidadeDestino) registo.quantidade_destino = Number(quantidadeDestino);
+        if (localizacaoOrigem) registo.localizacao_origem_id = localizacaoOrigem;
+        if (localizacaoDestino) registo.localizacao_destino_id = localizacaoDestino;
+    }
+
+    const { error } = await supabaseClient.from("movimentos_stock").insert(registo);
+    if (error) { erroEl.textContent = "Erro ao registar: " + traduzirErro(error.message); return; }
+
+    document.getElementById("mQuantidade").value = "";
+    document.getElementById("mObservacoes").value = "";
+    carregarLotesArtigo();
+    toast("Movimento registado — o Francisco foi avisado.", "sucesso");
+});
+
+async function carregar() {
+    const { data: paraPreparar, error: erro1 } = await supabaseClient
+        .from("encomendas")
+        .select("encomenda_id, data_entrega_pretendida, clientes(nome), encomenda_lote(quantidade_alocada, lotes_producao(produto, numero_lote))")
+        .eq("estado", "Em Preparação")
+        .order("data_entrega_pretendida", { ascending: true });
+
+    const corpoPrep = document.getElementById("corpoPreparacao");
+    if (erro1) { console.error(erro1); return; }
+    corpoPrep.innerHTML = paraPreparar.length ? "" :
+        `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Nada à espera de picking.</td></tr>`;
+    paraPreparar.forEach((enc) => {
+        const lotes = enc.encomenda_lote.length
+            ? enc.encomenda_lote.map((el) => `${escaparHtml(el.lotes_producao?.produto ?? "—")} · lote ${escaparHtml(el.lotes_producao?.numero_lote ?? "—")} (${el.quantidade_alocada})`).join("<br>")
+            : `<span style="color:var(--ink-suave);">Sem lote atribuído — confirma com o Francisco</span>`;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(enc.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Lote a usar">${lotes}</td>
+            <td data-rotulo="Entrega">${formatarData(enc.data_entrega_pretendida)}</td>
+            <td data-rotulo="Acção"><button onclick="marcarPronta('${enc.encomenda_id}')"><i class="ti ti-check" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Picking concluído</button></td>
+        `;
+        corpoPrep.appendChild(tr);
+    });
+
+    const { data: historico, error: erro2 } = await supabaseClient
+        .from("encomendas")
+        .select("clientes(nome), estado")
+        .in("estado", ["Pronta", "Carregada"])
+        .order("data_hora_carregamento", { ascending: false })
+        .limit(10);
+
+    const corpoHist = document.getElementById("corpoHistorico");
+    if (erro2) { console.error(erro2); return; }
+    corpoHist.innerHTML = "";
+    historico.forEach((enc) => {
+        const classeEstado = CLASSE_ESTADO[enc.estado] ?? "Registada";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(enc.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Estado"><span class="badge ${classeEstado}">${enc.estado}</span></td>
+        `;
+        corpoHist.appendChild(tr);
+    });
+}
+
+async function marcarPronta(encomendaId) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { error } = await supabaseClient
+        .from("encomendas")
+        .update({
+            estado: "Pronta",
+            data_conclusao_preparacao: new Date().toISOString(),
+            preparado_por: session.user.id,
+        })
+        .eq("encomenda_id", encomendaId);
+    if (error) { toast("Erro ao actualizar: " + error.message, "erro"); return; }
+    carregar();
+    toast("Picking concluído — encomenda pronta para carregar.", "sucesso");
+}
+
+iniciar();
+</script>
+</body>
+</html>
