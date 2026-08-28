@@ -4,8 +4,8 @@
 // A anon key é pública por definição (fica exposta no código do browser);
 // a segurança real vem das políticas RLS definidas no schema.sql, não daqui.
 // ============================================================================
-const SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
-const SUPABASE_ANON_KEY = "SUA-CHAVE-ANONIMA-PUBLICA";
+const SUPABASE_URL = "https://iayebkcqvfbzyvlhwfei.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlheWVia2NxdmZienl2bGh3ZmVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjE4MjcsImV4cCI6MjEwMzMzNzgyN30.JZVSXjYaMstt6qxbemF6Ig-TMR8FBTbxl9jYX9NmZJg";
 
 const { createClient } = supabase;
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
