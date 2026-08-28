@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consulta de Encomendas — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout-admin">
+<nav class="barra-lateral">
+    <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button class="nav-item activo" data-secao="visao-geral"><i class="ti ti-chart-bar" aria-hidden="true"></i> Visão geral</button>
+    <button class="nav-item" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
+    <button class="nav-item" data-secao="precos" id="navPrecos" style="display:none;"><i class="ti ti-tags" aria-hidden="true"></i> Preços &amp; Receitas</button>
+    <button class="nav-item" data-secao="custos" id="navCustos" style="display:none;"><i class="ti ti-chart-line" aria-hidden="true"></i> Custos</button>
+    <button class="nav-item" data-secao="vendas" id="navVendas" style="display:none;"><i class="ti ti-report-money" aria-hidden="true"></i> Vendas</button>
+</nav>
+
+<div class="conteudo-admin">
+<header>
+    <h1 id="tituloSecao">Visão geral</h1>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <span class="bloco-sino">
+            <button id="botaoSino" onclick="alternarPainelAlertas()" aria-label="Notificações"><i class="ti ti-bell" style="font-size:19px; vertical-align:-4px;" aria-hidden="true"></i><span id="badgeAlertasSino"></span></button>
+            <div id="painelAlertas"></div>
+        </span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+<section class="painel activo" data-secao="visao-geral">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoMinhasNc"></tbody>
+        </table>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">No prazo (30 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiNoPrazo">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Atrasadas (30 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0; color:var(--perigo);" id="kpiAtrasadas">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Custo médio produção (90 dias)</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiCustoMedio">—</p>
+        </div>
+    </div>
+
+    <div class="cartao">
+        <h2>Encomendas por estado</h2>
+        <div id="blocoFunil" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>Volume por semana</h2>
+        <div id="blocoVolume" style="display:flex; align-items:flex-end; gap:6px; height:120px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>Clientes com mais volume (30 dias)</h2>
+        <table>
+            <thead><tr><th>Cliente</th><th>Encomendas</th></tr></thead>
+            <tbody id="corpoTopClientes"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="painel" data-secao="precos">
+    <div class="cartao" id="cartaoValorPotencial">
+        <h2>Valor de stock e potencial por cliente</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            "Potencial" é hipotético — assume todo o stock desse produto vendido a esse cliente ao preço acordado. Não soma entre clientes.
+        </p>
+        <div class="linha-form">
+            <select id="pvCliente"><option value="">Todos os clientes</option></select>
+            <button class="secundario" id="btnExportarValorPotencial"><i class="ti ti-file-spreadsheet" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar Excel (tabela cruzada)</button>
+        </div>
+        <table>
+            <thead><tr><th>Cliente</th><th>Produto</th><th>Stock disponível</th><th>Preço/un</th><th>Valor potencial</th></tr></thead>
+            <tbody id="corpoValorPotencial"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoReceitas">
+        <h2>Receitas (BOM) — custos actuais</h2>
+        <input id="rcFiltro" placeholder="Filtrar por produto..." style="margin-bottom:12px;">
+        <table>
+            <thead><tr><th>Produto</th><th>Matéria-prima</th><th>Quantidade/un</th><th>Custo/un</th><th>Custo desta linha</th></tr></thead>
+            <tbody id="corpoReceitasConsulta"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoAlertarPreco">
+        <h2>Alertar mudança de preço</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Se souberes que um custo mudou (ex. o fornecedor aumentou o preço), avisa o admin — não altera nada sozinho, só cria um alerta para ele confirmar.
+        </p>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="apArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="apArtigo">
+                <div id="apArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <input id="apPreco" type="number" min="0" step="0.0001" placeholder="Novo preço (€)">
+        </div>
+        <div class="linha-form">
+            <select id="apUnidade">
+                <option value="KG">KG</option>
+                <option value="G">G</option>
+                <option value="L">L</option>
+                <option value="ML">ML</option>
+                <option value="UN">UN — Unidade</option>
+                <option value="PCK">PCK — Pack</option>
+                <option value="PCK2">PCK2 — Pack 2</option>
+                <option value="PCK4">PCK4 — Pack 4</option>
+                <option value="PCK6">PCK6 — Pack 6</option>
+                <option value="MIL">MIL — Milheiro</option>
+            </select>
+            <button id="btnAlertarPreco">Enviar alerta</button>
+        </div>
+        <p id="erroAlertarPreco" class="erro"></p>
+    </div>
+</section>
+
+<section class="painel" data-secao="custos">
+    <div class="cartao" id="cartaoEvolucaoCustos">
+        <h2>Evolução de custos — matérias-primas e utilitários</h2>
+        <div class="linha-form">
+            <select id="evTipo">
+                <option value="artigo">Matéria-prima / artigo</option>
+                <option value="utilitario">Utilitário</option>
+            </select>
+            <div class="campo-pesquisa-artigo" id="blocoEvArtigo">
+                <input type="text" id="evArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="evAlvo">
+                <div id="evArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="evAlvoUtilitario" style="display:none;"></select>
+        </div>
+        <div id="blocoEvolucaoCustos" style="display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:16px;"></div>
+        <p id="semDadosEvolucao" style="font-size:13px; color:var(--ink-suave); display:none;">Sem histórico suficiente para este item ainda.</p>
+    </div>
+</section>
+
+<section class="painel" data-secao="vendas">
+    <div class="cartao" id="cartaoVendas">
+        <h2>Vendas despachadas — valor sem IVA</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Soma o valor das encomendas já carregadas (despachadas), ao preço de contrato de cada cliente. Escolhe o intervalo e calcula.
+        </p>
+        <div class="linha-form">
+            <input id="vendasInicio" type="date">
+            <input id="vendasFim" type="date">
+        </div>
+        <button id="btnCalcularVendas">Calcular</button>
+        <p style="font-size:20px; font-weight:700; margin:16px 0 12px;">Total sem IVA: <span id="totalVendasSemIva">—</span></p>
+        <table>
+            <thead><tr><th>Cliente</th><th>Produto</th><th>Quantidade</th><th>Preço/un</th><th>Valor</th><th>Data</th></tr></thead>
+            <tbody id="corpoVendas"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="painel" data-secao="encomendas">
+    <div class="cartao" style="margin-top:0;">
+        <h2>Encomendas</h2>
+        <div class="linha-form">
+            <input id="pesquisa" placeholder="Pesquisar por cliente...">
+            <button class="secundario" id="btnExportarCsv"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+            <button class="secundario" id="btnExportarPdf"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF</button>
+        </div>
+        <table>
+            <thead><tr><th>Cliente</th><th>Entrega</th><th>Estado</th></tr></thead>
+            <tbody id="corpoTabela"></tbody>
+        </table>
+    </div>
+</section>
+</main>
+</div>
+</div>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+let todasEncomendas = [];
+
+async function iniciar() {
+    const contexto = await exigirRole(["consulta", "admin", "producao", "armazem"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
+    await inicializarAlertas();
+    await carregar();
+    await carregarKpis();
+    carregarMinhasNcPartilhado(contexto.session.user.id);
+
+    // Preços de contrato e evolução de custos são informação comercial
+    // sensível — só admin e consulta veem estes separadores. A RLS já
+    // bloqueia os dados para o Nuno/Fernando, mas isto evita mostrar-lhes
+    // separadores vazios sem explicação.
+    if (contexto.perfil.role === "admin" || contexto.perfil.role === "consulta") {
+        document.getElementById("navPrecos").style.display = "flex";
+        document.getElementById("navCustos").style.display = "flex";
+        document.getElementById("navVendas").style.display = "flex";
+        await carregarValorPotencial();
+        await activarPesquisaArtigo("evArtigoTexto", "evAlvo", "evArtigoResultados", carregarGraficoEvolucao);
+        await carregarOpcoesEvolucao();
+        await carregarReceitasConsulta();
+        await activarPesquisaArtigo("apArtigoTexto", "apArtigo", "apArtigoResultados");
+    }
+
+    supabaseClient
+        .channel("encomendas-consulta")
+        .on("postgres_changes", { event: "*", schema: "public", table: "encomendas" }, () => {
+            carregar();
+            carregarKpis();
+        })
+        .subscribe();
+
+    // Restaura o último separador visitado, só depois de sabermos quais
+    // estão mesmo visíveis para este perfil (evita cair num separador
+    // sensível escondido, se a preferência guardada for de outra sessão).
+    const seccaoGuardada = localStorage.getItem("batardas_secao_consulta");
+    const botaoGuardado = seccaoGuardada && document.querySelector(`.nav-item[data-secao="${seccaoGuardada}"]`);
+    const seccaoVisivel = botaoGuardado && getComputedStyle(botaoGuardado).display !== "none";
+    mudarSecao(seccaoVisivel ? seccaoGuardada : "visao-geral");
+}
+
+let ultimosPrecosClientes = [];
+let ultimoStockPorArtigo = {};
+
+async function carregarValorPotencial() {
+    const { data: precos, error } = await supabaseClient
+        .from("precos_cliente")
+        .select("preco_unitario, clientes(cliente_id, nome), artigos(artigo_id, designacao)")
+        .order("criado_em", { ascending: false });
+    if (error) { console.error(error); return; }
+    ultimosPrecosClientes = precos ?? [];
+
+    const { data: stocks } = await supabaseClient.from("lotes_artigo").select("artigo_id, quantidade_atual");
+    ultimoStockPorArtigo = {};
+    (stocks ?? []).forEach((s) => { ultimoStockPorArtigo[s.artigo_id] = (ultimoStockPorArtigo[s.artigo_id] || 0) + Number(s.quantidade_atual); });
+
+    const clientesUnicos = [...new Map((precos ?? []).map((p) => [p.clientes?.cliente_id, p.clientes?.nome])).entries()]
+        .filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+    const selectCliente = document.getElementById("pvCliente");
+    const seleccaoAnterior = selectCliente.value;
+    selectCliente.innerHTML = `<option value="">Todos os clientes</option>` +
+        clientesUnicos.map(([id, nome]) => `<option value="${id}">${escaparHtml(nome)}</option>`).join("");
+    selectCliente.value = seleccaoAnterior;
+
+    renderizarValorPotencial();
+}
+
+function renderizarValorPotencial() {
+    const clienteFiltro = document.getElementById("pvCliente").value;
+    const linhas = clienteFiltro
+        ? ultimosPrecosClientes.filter((p) => p.clientes?.cliente_id === clienteFiltro)
+        : ultimosPrecosClientes;
+
+    const corpo = document.getElementById("corpoValorPotencial");
+    corpo.innerHTML = linhas.length ? "" :
+        `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem preços de contrato para mostrar.</td></tr>`;
+    linhas.forEach((p) => {
+        const stock = ultimoStockPorArtigo[p.artigos?.artigo_id] || 0;
+        const potencial = stock * Number(p.preco_unitario);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(p.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Produto">${escaparHtml(p.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Stock disponível">${stock}</td>
+            <td data-rotulo="Preço/un">€${Number(p.preco_unitario).toFixed(4)}</td>
+            <td data-rotulo="Valor potencial"><strong>€${potencial.toFixed(2)}</strong></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+document.getElementById("pvCliente").addEventListener("change", renderizarValorPotencial);
+
+document.getElementById("btnExportarValorPotencial").addEventListener("click", () => {
+    const produtosComStock = [...new Map(
+        ultimosPrecosClientes
+            .filter((p) => (ultimoStockPorArtigo[p.artigos?.artigo_id] || 0) > 0)
+            .map((p) => [p.artigos.artigo_id, p.artigos.designacao])
+    ).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+
+    const clientesUnicos = [...new Map(
+        ultimosPrecosClientes.map((p) => [p.clientes?.cliente_id, p.clientes?.nome])
+    ).entries()].filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+
+    if (!produtosComStock.length || !clientesUnicos.length) {
+        toast("Sem dados suficientes para exportar (precisa de produtos com stock e preços de contrato).", "erro");
+        return;
+    }
+
+    const precoPorPar = {};
+    ultimosPrecosClientes.forEach((p) => {
+        precoPorPar[`${p.artigos?.artigo_id}|${p.clientes?.cliente_id}`] = Number(p.preco_unitario);
+    });
+
+    const cabecalho = ["Produto", ...clientesUnicos.map(([, nome]) => nome)];
+    const linhas = produtosComStock.map(([artigoId, designacao]) => {
+        const stock = ultimoStockPorArtigo[artigoId] || 0;
+        const valores = clientesUnicos.map(([clienteId]) => {
+            const preco = precoPorPar[`${artigoId}|${clienteId}`];
+            return preco !== undefined ? Math.round(stock * preco * 100) / 100 : "";
+        });
+        return [designacao, ...valores];
+    });
+
+    const linhaTotal = ["TOTAL GERAL", ...clientesUnicos.map((_, i) =>
+        linhas.reduce((soma, linha) => soma + (typeof linha[i + 1] === "number" ? linha[i + 1] : 0), 0)
+    )];
+
+    const folha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas, linhaTotal]);
+    const livro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(livro, folha, "Valor potencial");
+    XLSX.writeFile(livro, `valor_potencial_por_cliente_${new Date().toISOString().slice(0, 10)}.xlsx`);
+});
+
+async function carregarOpcoesEvolucao() {
+    const tipo = document.getElementById("evTipo").value;
+    document.getElementById("blocoEvArtigo").style.display = tipo === "artigo" ? "flex" : "none";
+    document.getElementById("evAlvoUtilitario").style.display = tipo === "utilitario" ? "block" : "none";
+
+    if (tipo === "utilitario") {
+        const { data } = await supabaseClient.from("utilitarios_custos").select("utilitario");
+        const nomes = [...new Set((data ?? []).map((u) => u.utilitario))];
+        document.getElementById("evAlvoUtilitario").innerHTML = nomes.map((n) => `<option value="${escaparHtml(n)}">${escaparHtml(n)}</option>`).join("");
+    }
+    await carregarGraficoEvolucao();
+}
+
+async function carregarGraficoEvolucao() {
+    const tipo = document.getElementById("evTipo").value;
+    const alvo = tipo === "artigo" ? document.getElementById("evAlvo").value : document.getElementById("evAlvoUtilitario").value;
+    const bloco = document.getElementById("blocoEvolucaoCustos");
+    const avisoVazio = document.getElementById("semDadosEvolucao");
+    bloco.innerHTML = "";
+    if (!alvo) { avisoVazio.style.display = "block"; return; }
+
+    let pontos = [];
+    if (tipo === "artigo") {
+        const { data } = await supabaseClient
+            .from("historico_custos_artigo")
+            .select("custo_unitario, registado_em")
+            .eq("artigo_id", alvo)
+            .order("registado_em", { ascending: true });
+        pontos = (data ?? []).filter((p) => p.custo_unitario != null).map((p) => ({ valor: Number(p.custo_unitario), data: p.registado_em }));
+
+        const { data: artigoActual } = await supabaseClient.from("custos_artigo").select("custo_unitario").eq("artigo_id", alvo).maybeSingle();
+        if (artigoActual?.custo_unitario != null) pontos.push({ valor: Number(artigoActual.custo_unitario), data: new Date().toISOString() });
+    } else {
+        const { data } = await supabaseClient
+            .from("utilitarios_custos")
+            .select("custo, periodo")
+            .eq("utilitario", alvo)
+            .order("periodo", { ascending: true });
+        pontos = (data ?? []).map((p) => ({ valor: Number(p.custo), data: p.periodo }));
+    }
+
+    if (pontos.length < 2) { avisoVazio.style.display = "block"; return; }
+    avisoVazio.style.display = "none";
+
+    const maxValor = Math.max(...pontos.map((p) => p.valor));
+    pontos.forEach((p) => {
+        const altura = Math.max(Math.round((p.valor / maxValor) * 100), 4);
+        const barra = document.createElement("div");
+        barra.title = `${formatarData(p.data)}: €${p.valor.toFixed(4)}`;
+        barra.style.cssText = `flex:1; background:var(--accent); border-radius:4px 4px 0 0; height:${altura}%;`;
+        bloco.appendChild(barra);
+    });
+}
+
+document.getElementById("evTipo").addEventListener("change", carregarOpcoesEvolucao);
+document.getElementById("evAlvoUtilitario").addEventListener("change", carregarGraficoEvolucao);
+
+async function carregar() {
+    const { data, error } = await supabaseClient
+        .from("encomendas")
+        .select("data_entrega_pretendida, estado, clientes(nome)")
+        .order("data_entrega_pretendida", { ascending: true })
+        .limit(200);
+    if (error) { console.error(error); return; }
+    todasEncomendas = data;
+    desenharTabela();
+}
+
+function desenharTabela() {
+    const termo = document.getElementById("pesquisa").value.trim().toLowerCase();
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
+    const filtradas = termo
+        ? todasEncomendas.filter((e) => (e.clientes?.nome ?? "").toLowerCase().includes(termo))
+        : todasEncomendas;
+
+    const corpo = document.getElementById("corpoTabela");
+    corpo.innerHTML = filtradas.length ? "" :
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Nenhuma encomenda encontrada.</td></tr>`;
+    filtradas.slice(0, 60).forEach((enc) => {
+        const classeEstado = CLASSE_ESTADO[enc.estado] ?? "Registada";
+        const dataEntrega = new Date(enc.data_entrega_pretendida + "T00:00:00");
+        const atrasada = enc.estado !== "Carregada" && dataEntrega <= hoje;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(enc.clientes?.nome ?? "—")}</td>
+            <td data-rotulo="Entrega"><span style="color:${atrasada ? "var(--perigo)" : "inherit"}; font-weight:${atrasada ? 600 : 400};">${formatarData(enc.data_entrega_pretendida)}${atrasada ? " — atrasada" : ""}</span></td>
+            <td data-rotulo="Estado"><span class="badge ${classeEstado}">${enc.estado}</span></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+document.getElementById("pesquisa").addEventListener("input", desenharTabela);
+
+async function carregarKpis() {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const ha30dias = new Date(hoje); ha30dias.setDate(ha30dias.getDate() - 30);
+    const iso30 = ha30dias.toISOString().slice(0, 10);
+    const isoHoje = hoje.toISOString().slice(0, 10);
+
+    const contagemEstados = {};
+    todasEncomendas.forEach((e) => { contagemEstados[e.estado] = (contagemEstados[e.estado] || 0) + 1; });
+    const blocoFunil = document.getElementById("blocoFunil");
+    blocoFunil.innerHTML = "";
+    Object.entries(contagemEstados).forEach(([estado, n]) => {
+        const classeEstado = CLASSE_ESTADO[estado] ?? "Registada";
+        const div = document.createElement("div");
+        div.innerHTML = `<span class="badge ${classeEstado}">${estado}</span> <strong style="margin-left:6px;">${n}</strong>`;
+        blocoFunil.appendChild(div);
+    });
+
+    const { data: recentes } = await supabaseClient
+        .from("encomendas")
+        .select("data_entrega_pretendida, estado")
+        .gte("data_entrega_pretendida", iso30)
+        .lte("data_entrega_pretendida", isoHoje);
+
+    let noPrazo = 0, atrasadas = 0;
+    (recentes ?? []).forEach((e) => {
+        if (e.estado === "Carregada") noPrazo++;
+        else atrasadas++;
+    });
+    document.getElementById("kpiNoPrazo").textContent = noPrazo;
+    document.getElementById("kpiAtrasadas").textContent = atrasadas;
+
+    const { data: volumeDados } = await supabaseClient
+        .from("encomendas")
+        .select("data_pedido")
+        .gte("data_pedido", new Date(hoje.getTime() - 56 * 86400000).toISOString());
+
+    const semanas = {};
+    (volumeDados ?? []).forEach((e) => {
+        const d = new Date(e.data_pedido);
+        const inicioSemana = new Date(d); inicioSemana.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        const chave = inicioSemana.toISOString().slice(0, 10);
+        semanas[chave] = (semanas[chave] || 0) + 1;
+    });
+    const chavesOrdenadas = Object.keys(semanas).sort();
+    const maxVolume = Math.max(1, ...Object.values(semanas));
+    const blocoVolume = document.getElementById("blocoVolume");
+    blocoVolume.innerHTML = "";
+    chavesOrdenadas.forEach((chave) => {
+        const altura = Math.round((semanas[chave] / maxVolume) * 100);
+        const barra = document.createElement("div");
+        barra.title = `${chave}: ${semanas[chave]} encomendas`;
+        barra.style.cssText = `flex:1; background:var(--accent); border-radius:4px 4px 0 0; height:${Math.max(altura, 4)}%;`;
+        blocoVolume.appendChild(barra);
+    });
+    if (!chavesOrdenadas.length) blocoVolume.innerHTML = `<p style="color:var(--ink-suave); font-size:13px;">Sem dados suficientes ainda.</p>`;
+
+    const { data: linhasPeriodo } = await supabaseClient
+        .from("encomendas")
+        .select("clientes(nome)")
+        .gte("data_pedido", ha30dias.toISOString());
+    const porCliente = {};
+    (linhasPeriodo ?? []).forEach((e) => {
+        const nome = e.clientes?.nome ?? "—";
+        porCliente[nome] = (porCliente[nome] || 0) + 1;
+    });
+    const topClientes = Object.entries(porCliente).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const corpoTop = document.getElementById("corpoTopClientes");
+    corpoTop.innerHTML = topClientes.length ? "" :
+        `<tr><td colspan="2" style="text-align:center; color:var(--ink-suave);">Sem dados suficientes ainda.</td></tr>`;
+    topClientes.forEach(([nome, n]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td data-rotulo="Cliente">${escaparHtml(nome)}</td><td data-rotulo="Encomendas">${n}</td>`;
+        corpoTop.appendChild(tr);
+    });
+
+    const { data: custos } = await supabaseClient
+        .from("lotes_producao")
+        .select("custo_medio_unitario")
+        .gte("data_producao", new Date(hoje.getTime() - 90 * 86400000).toISOString().slice(0, 10));
+    const valores = (custos ?? []).map((c) => c.custo_medio_unitario).filter((v) => v != null);
+    document.getElementById("kpiCustoMedio").textContent = valores.length
+        ? "€" + (valores.reduce((a, b) => a + b, 0) / valores.length).toFixed(4)
+        : "Sem BOM completa";
+}
+
+document.getElementById("btnExportarCsv").addEventListener("click", () => {
+    const cabecalho = ["Cliente", "Entrega", "Estado"];
+    const linhas = todasEncomendas.map((e) => [e.clientes?.nome ?? "—", e.data_entrega_pretendida, e.estado]);
+    const paraCsv = (v) => { const t = String(v ?? ""); return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const csv = [cabecalho, ...linhas].map((l) => l.map(paraCsv).join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `encomendas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById("btnExportarPdf").addEventListener("click", () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Batardas — Estado das encomendas", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+
+    const linhas = todasEncomendas.map((e) => [e.clientes?.nome ?? "—", formatarData(e.data_entrega_pretendida), e.estado]);
+    doc.autoTable({
+        startY: 28,
+        head: [["Cliente", "Entrega", "Estado"]],
+        body: linhas,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [32, 31, 28] },
+    });
+    doc.save(`encomendas-${new Date().toISOString().slice(0, 10)}.pdf`);
+});
+
+// --- Receitas (BOM) só leitura, com custos actuais ---------------------
+let todasLinhasReceitas = [];
+
+async function carregarReceitasConsulta() {
+    const { data, error } = await supabaseClient
+        .from("bom_componentes")
+        .select("produto:produto_id(designacao), componente:componente_id(artigo_id, designacao, unidade), quantidade_por_unidade");
+    if (error) { console.error(error); return; }
+
+    // Junta-se do lado do browser, tal como no relatório de valor
+    // potencial — aninhar custos_artigo dentro de artigos deu ambiguidade
+    // no PostgREST da última vez que tentei (é uma relação 1-para-1).
+    const { data: custos } = await supabaseClient.from("custos_artigo").select("artigo_id, custo_unitario");
+    const custoPorArtigo = Object.fromEntries((custos ?? []).map((c) => [c.artigo_id, Number(c.custo_unitario)]));
+
+    todasLinhasReceitas = (data ?? []).map((l) => ({
+        produto: l.produto?.designacao ?? "—",
+        componente: l.componente?.designacao ?? "—",
+        unidade: (l.componente?.unidade ?? "un").toUpperCase(),
+        quantidade: Number(l.quantidade_por_unidade),
+        custoUnitario: l.componente?.artigo_id != null && custoPorArtigo[l.componente.artigo_id] != null
+            ? custoPorArtigo[l.componente.artigo_id] : null,
+    })).sort((a, b) => a.produto.localeCompare(b.produto));
+
+    renderizarReceitasConsulta();
+}
+
+function renderizarReceitasConsulta() {
+    const filtro = document.getElementById("rcFiltro").value.trim().toLowerCase();
+    const linhas = filtro ? todasLinhasReceitas.filter((l) => l.produto.toLowerCase().includes(filtro)) : todasLinhasReceitas;
+
+    const corpo = document.getElementById("corpoReceitasConsulta");
+    corpo.innerHTML = linhas.length ? "" : `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem receitas a mostrar.</td></tr>`;
+    linhas.forEach((l) => {
+        const custoLinha = l.custoUnitario != null ? l.quantidade * l.custoUnitario : null;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Produto">${escaparHtml(l.produto)}</td>
+            <td data-rotulo="Matéria-prima">${escaparHtml(l.componente)}</td>
+            <td data-rotulo="Quantidade/un">${l.quantidade.toFixed(4)} ${escaparHtml(l.unidade)}</td>
+            <td data-rotulo="Custo/un">${l.custoUnitario != null ? "€" + l.custoUnitario.toFixed(4) : "—"}</td>
+            <td data-rotulo="Custo desta linha">${custoLinha != null ? "€" + custoLinha.toFixed(4) : "—"}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+document.getElementById("rcFiltro").addEventListener("input", renderizarReceitasConsulta);
+
+// --- Alertar mudança de preço -------------------------------------------
+document.getElementById("btnAlertarPreco").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroAlertarPreco");
+    erroEl.textContent = "";
+
+    const artigoId = document.getElementById("apArtigo").value;
+    const nomeArtigo = document.getElementById("apArtigoTexto").value.trim();
+    const preco = document.getElementById("apPreco").value;
+    const unidade = document.getElementById("apUnidade").value;
+
+    if (!artigoId || !preco) { erroEl.textContent = "Escolhe o artigo e o novo preço."; return; }
+
+    const { error } = await supabaseClient.from("alertas").insert({
+        tipo: "sugestao_preco",
+        titulo: "Sugestão de mudança de preço",
+        corpo: `${nomeArtigo}: €${Number(preco).toFixed(4)}/${unidade}`,
+        destinatario_role: "admin",
+        link_secao: "financeiro",
+        link_id: artigoId,
+    });
+    if (error) { erroEl.textContent = "Erro ao enviar: " + error.message; return; }
+
+    toast("Alerta enviado ao admin.", "sucesso");
+    document.getElementById("apArtigoTexto").value = "";
+    document.getElementById("apArtigo").value = "";
+    document.getElementById("apPreco").value = "";
+});
+
+// --- Vendas despachadas, sem IVA ----------------------------------------
+document.getElementById("btnCalcularVendas").addEventListener("click", async () => {
+    const inicio = document.getElementById("vendasInicio").value;
+    const fim = document.getElementById("vendasFim").value;
+    if (!inicio || !fim) { toast("Escolhe as duas datas.", "erro"); return; }
+
+    const { data: encomendas, error } = await supabaseClient
+        .from("encomendas")
+        .select(`
+            encomenda_id, data_hora_carregamento,
+            clientes(cliente_id, nome),
+            linhas_encomenda(artigo_id, quantidade_pedida, quantidade_base, produto, artigos(designacao))
+        `)
+        .eq("estado", "Carregada")
+        .gte("data_hora_carregamento", inicio + "T00:00:00")
+        .lte("data_hora_carregamento", fim + "T23:59:59");
+    if (error) { console.error(error); toast("Erro ao calcular: " + error.message, "erro"); return; }
+
+    // Preços de contrato — um pedido só, reutilizado para todas as linhas.
+    const { data: precos } = await supabaseClient.from("precos_cliente").select("cliente_id, artigo_id, preco_unitario");
+    const precoPorPar = {};
+    (precos ?? []).forEach((p) => { precoPorPar[`${p.cliente_id}|${p.artigo_id}`] = Number(p.preco_unitario); });
+
+    let total = 0;
+    const linhasParaMostrar = [];
+    (encomendas ?? []).forEach((enc) => {
+        (enc.linhas_encomenda ?? []).forEach((linha) => {
+            const preco = precoPorPar[`${enc.clientes?.cliente_id}|${linha.artigo_id}`];
+            if (preco == null) return; // sem preço de contrato — não entra no total (evita inventar valor)
+            const quantidade = Number(linha.quantidade_base ?? linha.quantidade_pedida);
+            const valor = quantidade * preco;
+            total += valor;
+            linhasParaMostrar.push({
+                cliente: enc.clientes?.nome ?? "—",
+                produto: linha.artigos?.designacao ?? linha.produto ?? "—",
+                quantidade,
+                preco,
+                valor,
+                data: enc.data_hora_carregamento,
+            });
+        });
+    });
+
+    document.getElementById("totalVendasSemIva").textContent = "€" + total.toFixed(2);
+    const corpo = document.getElementById("corpoVendas");
+    corpo.innerHTML = linhasParaMostrar.length ? "" :
+        `<tr><td colspan="6" style="text-align:center; color:var(--ink-suave);">Sem vendas com preço de contrato neste intervalo.</td></tr>`;
+    linhasParaMostrar.sort((a, b) => new Date(b.data) - new Date(a.data)).forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(l.cliente)}</td>
+            <td data-rotulo="Produto">${escaparHtml(l.produto)}</td>
+            <td data-rotulo="Quantidade">${l.quantidade}</td>
+            <td data-rotulo="Preço/un">€${l.preco.toFixed(4)}</td>
+            <td data-rotulo="Valor"><strong>€${l.valor.toFixed(2)}</strong></td>
+            <td data-rotulo="Data">${formatarData(l.data)}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+});
+
+iniciar();
+
+const TITULOS_SECAO = { "visao-geral": "Visão geral", encomendas: "Encomendas", precos: "Preços & Receitas", custos: "Custos", vendas: "Vendas" };
+
+function mudarSecao(secao) {
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
+    document.querySelectorAll(".painel").forEach((p) => p.classList.toggle("activo", p.dataset.secao === secao));
+    document.getElementById("tituloSecao").textContent = TITULOS_SECAO[secao] ?? "Visão geral";
+    localStorage.setItem("batardas_secao_consulta", secao);
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
+});
+</script>
+</body>
+</html>
