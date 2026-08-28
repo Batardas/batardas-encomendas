@@ -30,9 +30,10 @@
 
     <div style="margin-top:auto; padding:16px 20px 4px; border-top:1px solid var(--linha);">
         <p style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-fraca); margin:12px 0 8px;">Ver como</p>
-        <a href="nuno.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i> Nuno (produção)</a>
-        <a href="fernando.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-package" aria-hidden="true"></i> Fernando (armazém)</a>
+        <a href="nuno.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i> Produção</a>
+        <a href="fernando.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-package" aria-hidden="true"></i> Armazém</a>
         <a href="consulta.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-eye" aria-hidden="true"></i> Consulta</a>
+        <a href="qualidade.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</a>
     </div>
 </nav>
 
@@ -115,7 +116,7 @@
         </p>
         <input id="laFiltro" placeholder="Pesquisar por código ou nome..." style="font-size:16px; padding:14px 16px; margin-bottom:16px;">
         <table>
-            <thead><tr><th>Referência</th><th>Designação</th><th>Unidade</th><th>Stock total</th></tr></thead>
+            <thead><tr><th>Referência</th><th>Designação</th><th>Tipo</th><th>Unidade</th><th>Stock total</th></tr></thead>
             <tbody id="corpoListaArtigos"></tbody>
         </table>
     </div>
@@ -139,6 +140,13 @@
                 <option value="l">L</option>
                 <option value="ml">ML</option>
             </select>
+            <select id="naTipoProduto">
+                <option value="materia_prima">Matéria-prima</option>
+                <option value="intermedio">Intermédio (massa, recheio...)</option>
+                <option value="pa">Produto acabado</option>
+            </select>
+        </div>
+        <div class="linha-form">
             <input id="naCusto" type="number" min="0" step="0.0001" placeholder="Custo inicial (€/un) — opcional">
         </div>
         <button id="btnCriarArtigo">Criar artigo</button>
@@ -229,6 +237,13 @@
             <input id="uDesignacao" placeholder="Designação do artigo">
         </div>
         <div class="linha-form">
+            <select id="uTipoProduto">
+                <option value="materia_prima">Matéria-prima (comprada/importada)</option>
+                <option value="intermedio">Intermédio (ex. massa, recheio — o Nuno produz, entra em stock, é usado noutras receitas)</option>
+                <option value="pa">Produto acabado (recebe o lote oficial)</option>
+            </select>
+        </div>
+        <div class="linha-form">
             <select id="uUnidadeBase">
                 <option value="un">UN — unidade inteira (não divisível)</option>
                 <option value="kg">KG — quilogramas (permite fracções)</option>
@@ -251,6 +266,16 @@
         </div>
         <button id="btnGuardarConversoes">Guardar artigo</button>
         <p id="erroConversoes" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Rastreabilidade por lote</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Escreve um número de lote (de produção ou de matéria-prima) para ver de onde veio e para onde foi — útil num exercício de recall.
+        </p>
+        <input id="rtLote" placeholder="Número do lote...">
+        <button id="btnPesquisarRastreio" class="secundario" style="margin-top:10px;">Pesquisar</button>
+        <div id="resultadoRastreio" style="margin-top:16px; font-size:13px;"></div>
     </div>
 
 </section>
@@ -435,6 +460,43 @@
         </p>
         <button class="secundario" id="btnPdf">Gerar PDF semanal</button>
     </div>
+
+    <div class="cartao">
+        <h2>Vendas despachadas — valor sem IVA</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Soma o valor das encomendas já carregadas (despachadas), ao preço de contrato de cada cliente. Escolhe o intervalo e calcula.
+        </p>
+        <div class="linha-form">
+            <input id="rvInicio" type="date">
+            <input id="rvFim" type="date">
+        </div>
+        <button id="btnCalcularVendasAdmin">Calcular</button>
+        <p style="font-size:20px; font-weight:700; margin:16px 0 12px;">Total sem IVA: <span id="totalVendasAdmin">—</span></p>
+        <table>
+            <thead><tr><th>Cliente</th><th>Produto</th><th>Quantidade</th><th>Preço/un</th><th>Valor</th><th>Data</th></tr></thead>
+            <tbody id="corpoVendasAdmin"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Custo médio de produção</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Lotes produzidos num período, com o custo médio congelado no momento da produção — para acompanhares margens ao longo do tempo.
+        </p>
+        <div class="linha-form">
+            <input id="rcpInicio" type="date">
+            <input id="rcpFim" type="date">
+        </div>
+        <button class="secundario" id="btnExportarCustoProducao"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+    </div>
+
+    <div class="cartao">
+        <h2>Fotografia de stock actual</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Exporta todo o stock existente agora — artigo, lote, quantidade, validade — para uma auditoria pontual ou para levares a uma reunião.
+        </p>
+        <button class="secundario" id="btnExportarStockActual"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+    </div>
 </section>
 
 <section class="painel" data-secao="utilizadores">
@@ -449,10 +511,11 @@
         </div>
         <div class="linha-form">
             <select id="uRole">
-                <option value="consulta">Consulta (Maria/Gonçalo)</option>
-                <option value="producao">Produção (Nuno)</option>
-                <option value="armazem">Armazém (Fernando)</option>
-                <option value="admin">Admin (tu/Mónica)</option>
+                <option value="consulta">Consulta</option>
+                <option value="producao">Produção</option>
+                <option value="armazem">Armazém</option>
+                <option value="qualidade">Qualidade</option>
+                <option value="admin">Admin</option>
             </select>
             <button id="btnCriarUtilizador">Criar utilizador</button>
         </div>
@@ -965,13 +1028,14 @@ document.getElementById("btnCriarArtigo").addEventListener("click", async () => 
     const referencia = document.getElementById("naReferencia").value.trim();
     const designacao = document.getElementById("naDesignacao").value.trim();
     const unidade = document.getElementById("naUnidade").value;
+    const tipoProduto = document.getElementById("naTipoProduto").value;
     const custo = document.getElementById("naCusto").value;
 
     if (!referencia || !designacao) { erroEl.textContent = "Preenche a referência e a designação."; return; }
 
     const { data, error } = await supabaseClient
         .from("artigos")
-        .insert({ ref_primavera: referencia, designacao, unidade })
+        .insert({ ref_primavera: referencia, designacao, unidade, tipo_produto: tipoProduto })
         .select("artigo_id")
         .single();
     if (error) { erroEl.textContent = "Erro ao criar: " + traduzirErro(error.message); return; }
@@ -987,6 +1051,7 @@ document.getElementById("btnCriarArtigo").addEventListener("click", async () => 
     document.getElementById("naDesignacao").value = "";
     document.getElementById("naCusto").value = "";
     document.getElementById("naUnidade").value = "un";
+    document.getElementById("naTipoProduto").value = "materia_prima";
     toast(`Artigo "${designacao}" criado.`, "sucesso");
     _cacheArtigos = null; // força a pesquisa de artigos a refrescar com o novo
 });
@@ -1577,7 +1642,7 @@ async function chamarGestaoUtilizadores(corpo) {
     }
 }
 
-const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém", consulta: "Consulta" };
+const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém", consulta: "Consulta", qualidade: "Qualidade" };
 
 async function carregarUtilizadores() {
     const resultado = await chamarGestaoUtilizadores({ acao: "listar_utilizadores" });
@@ -1654,27 +1719,13 @@ async function carregarConversoesExistentes(artigoId) {
     if (!artigoId) return;
     const { data } = await supabaseClient
         .from("artigos")
-        .select("unidade, tipo_caixa, unidades_por_pack, unidades_por_caixa, unidades_por_palete")
-        .eq("artigo_id", artigoId)
-        .maybeSingle();
-    if (!data) return;
-    document.getElementById("uUnidadeBase").value = (data.unidade ?? "un").toLowerCase();
-    document.getElementById("uTipoCaixa").value = data.tipo_caixa ?? "";
-    document.getElementById("uPorPack").value = data.unidades_por_pack ?? "";
-    document.getElementById("uPorCaixa").value = data.unidades_por_caixa ?? "";
-    document.getElementById("uPorPalete").value = data.unidades_por_palete ?? "";
-}
-
-async function carregarConversoesExistentes(artigoId) {
-    if (!artigoId) return;
-    const { data } = await supabaseClient
-        .from("artigos")
-        .select("designacao, unidade, tipo_caixa, unidades_por_pack, unidades_por_caixa, unidades_por_palete")
+        .select("designacao, unidade, tipo_produto, tipo_caixa, unidades_por_pack, unidades_por_caixa, unidades_por_palete")
         .eq("artigo_id", artigoId)
         .maybeSingle();
     if (!data) return;
     document.getElementById("uDesignacao").value = data.designacao ?? "";
     document.getElementById("uUnidadeBase").value = (data.unidade ?? "un").toLowerCase();
+    document.getElementById("uTipoProduto").value = data.tipo_produto ?? "materia_prima";
     document.getElementById("uTipoCaixa").value = data.tipo_caixa ?? "";
     document.getElementById("uPorPack").value = data.unidades_por_pack ?? "";
     document.getElementById("uPorCaixa").value = data.unidades_por_caixa ?? "";
@@ -1689,6 +1740,7 @@ document.getElementById("btnGuardarConversoes").addEventListener("click", async 
 
     const designacao = document.getElementById("uDesignacao").value.trim();
     const unidadeBase = document.getElementById("uUnidadeBase").value;
+    const tipoProduto = document.getElementById("uTipoProduto").value;
     const tipoCaixa = document.getElementById("uTipoCaixa").value || null;
     const porPack = document.getElementById("uPorPack").value;
     const porCaixa = document.getElementById("uPorCaixa").value;
@@ -1700,6 +1752,7 @@ document.getElementById("btnGuardarConversoes").addEventListener("click", async 
         .update({
             designacao,
             unidade: unidadeBase,
+            tipo_produto: tipoProduto,
             tipo_caixa: tipoCaixa,
             unidades_por_pack: porPack === "" ? null : Number(porPack),
             unidades_por_caixa: porCaixa === "" ? null : Number(porCaixa),
@@ -1713,6 +1766,7 @@ document.getElementById("btnGuardarConversoes").addEventListener("click", async 
     document.getElementById("uArtigo").value = "";
     document.getElementById("uDesignacao").value = "";
     document.getElementById("uUnidadeBase").value = "un";
+    document.getElementById("uTipoProduto").value = "materia_prima";
     document.getElementById("uTipoCaixa").value = "";
     document.getElementById("uPorPack").value = "";
     document.getElementById("uPorCaixa").value = "";
@@ -1723,9 +1777,11 @@ document.getElementById("btnGuardarConversoes").addEventListener("click", async 
 
 let todosArtigosComStock = [];
 
+const NOME_TIPO_PRODUTO = { materia_prima: "Matéria-prima", intermedio: "Intermédio", pa: "Produto acabado" };
+
 async function carregarListaArtigos() {
     const { data: artigos, error } = await supabaseClient
-        .from("artigos").select("artigo_id, ref_primavera, designacao, unidade").order("designacao");
+        .from("artigos").select("artigo_id, ref_primavera, designacao, unidade, tipo_produto").order("designacao");
     if (error) { console.error(error); return; }
 
     const { data: lotes } = await supabaseClient.from("lotes_artigo").select("artigo_id, quantidade_atual");
@@ -1746,13 +1802,14 @@ function renderizarListaArtigos() {
 
     const corpo = document.getElementById("corpoListaArtigos");
     corpo.innerHTML = filtrados.length ? "" :
-        `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem artigos a mostrar.</td></tr>`;
+        `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem artigos a mostrar.</td></tr>`;
     filtrados.slice(0, 200).forEach((a) => {
         const tr = document.createElement("tr");
         tr.style.cursor = "pointer";
         tr.innerHTML = `
             <td data-rotulo="Referência" class="mono">${escaparHtml(a.ref_primavera)}</td>
             <td data-rotulo="Designação">${escaparHtml(a.designacao)}</td>
+            <td data-rotulo="Tipo">${escaparHtml(NOME_TIPO_PRODUTO[a.tipo_produto] ?? "Matéria-prima")}</td>
             <td data-rotulo="Unidade">${escaparHtml((a.unidade ?? "un").toUpperCase())}</td>
             <td data-rotulo="Stock total">${a.stock.toFixed(2)}</td>
         `;
@@ -2518,6 +2575,164 @@ document.getElementById("btnImportarPrecos").addEventListener("click", async () 
         ${erros.length ? `<p style="color:var(--perigo); margin-top:8px;">${erros.length} aviso(s):<br>${erros.map(escaparHtml).join("<br>")}</p>` : ""}
     `;
     document.getElementById("impPrecosFicheiro").value = "";
+});
+
+// --- Vendas despachadas sem IVA (mesma lógica da Consulta) ---------------
+document.getElementById("btnCalcularVendasAdmin").addEventListener("click", async () => {
+    const inicio = document.getElementById("rvInicio").value;
+    const fim = document.getElementById("rvFim").value;
+    if (!inicio || !fim) { toast("Escolhe as duas datas.", "erro"); return; }
+
+    const { data: encomendas, error } = await supabaseClient
+        .from("encomendas")
+        .select(`
+            encomenda_id, data_hora_carregamento,
+            clientes(cliente_id, nome),
+            linhas_encomenda(artigo_id, quantidade_pedida, quantidade_base, produto, artigos(designacao))
+        `)
+        .eq("estado", "Carregada")
+        .gte("data_hora_carregamento", inicio + "T00:00:00")
+        .lte("data_hora_carregamento", fim + "T23:59:59");
+    if (error) { toast("Erro ao calcular: " + error.message, "erro"); return; }
+
+    const { data: precos } = await supabaseClient.from("precos_cliente").select("cliente_id, artigo_id, preco_unitario");
+    const precoPorPar = {};
+    (precos ?? []).forEach((p) => { precoPorPar[`${p.cliente_id}|${p.artigo_id}`] = Number(p.preco_unitario); });
+
+    let total = 0;
+    const linhasParaMostrar = [];
+    (encomendas ?? []).forEach((enc) => {
+        (enc.linhas_encomenda ?? []).forEach((linha) => {
+            const preco = precoPorPar[`${enc.clientes?.cliente_id}|${linha.artigo_id}`];
+            if (preco == null) return;
+            const quantidade = Number(linha.quantidade_base ?? linha.quantidade_pedida);
+            const valor = quantidade * preco;
+            total += valor;
+            linhasParaMostrar.push({
+                cliente: enc.clientes?.nome ?? "—",
+                produto: linha.artigos?.designacao ?? linha.produto ?? "—",
+                quantidade, preco, valor, data: enc.data_hora_carregamento,
+            });
+        });
+    });
+
+    document.getElementById("totalVendasAdmin").textContent = "€" + total.toFixed(2);
+    const corpo = document.getElementById("corpoVendasAdmin");
+    corpo.innerHTML = linhasParaMostrar.length ? "" :
+        `<tr><td colspan="6" style="text-align:center; color:var(--ink-suave);">Sem vendas com preço de contrato neste intervalo.</td></tr>`;
+    linhasParaMostrar.sort((a, b) => new Date(b.data) - new Date(a.data)).forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Cliente">${escaparHtml(l.cliente)}</td>
+            <td data-rotulo="Produto">${escaparHtml(l.produto)}</td>
+            <td data-rotulo="Quantidade">${l.quantidade}</td>
+            <td data-rotulo="Preço/un">€${l.preco.toFixed(4)}</td>
+            <td data-rotulo="Valor"><strong>€${l.valor.toFixed(2)}</strong></td>
+            <td data-rotulo="Data">${formatarData(l.data)}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+});
+
+// --- Custo médio de produção ----------------------------------------------
+document.getElementById("btnExportarCustoProducao").addEventListener("click", async () => {
+    const inicio = document.getElementById("rcpInicio").value;
+    const fim = document.getElementById("rcpFim").value;
+    if (!inicio || !fim) { toast("Escolhe as duas datas.", "erro"); return; }
+
+    const { data, error } = await supabaseClient
+        .from("lotes_producao")
+        .select("produto, numero_lote, data_producao, quantidade_produzida, custo_total, custo_medio_unitario")
+        .gte("data_producao", inicio)
+        .lte("data_producao", fim)
+        .order("data_producao", { ascending: true });
+    if (error) { toast("Erro ao exportar: " + error.message, "erro"); return; }
+    if (!data.length) { toast("Sem produções nesse intervalo.", "erro"); return; }
+
+    const linhas = [["Produto", "Lote", "Data de produção", "Quantidade produzida", "Custo total (€)", "Custo médio/unidade (€)"]];
+    data.forEach((l) => linhas.push([
+        l.produto, l.numero_lote, l.data_producao, l.quantidade_produzida,
+        l.custo_total != null ? Number(l.custo_total).toFixed(4) : "",
+        l.custo_medio_unitario != null ? Number(l.custo_medio_unitario).toFixed(4) : "",
+    ]));
+    const csv = linhas.map((linha) => linha.map(paraCsv).join(";")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `custo_producao_${inicio}_a_${fim}.csv`;
+    a.click();
+});
+
+// --- Fotografia de stock actual --------------------------------------------
+document.getElementById("btnExportarStockActual").addEventListener("click", async () => {
+    const { data, error } = await supabaseClient
+        .from("lotes_artigo")
+        .select("numero_lote, quantidade_atual, validade, artigos(ref_primavera, designacao, unidade), localizacoes(nome)")
+        .order("numero_lote");
+    if (error) { toast("Erro ao exportar: " + error.message, "erro"); return; }
+    if (!data.length) { toast("Sem stock a exportar.", "erro"); return; }
+
+    const linhas = [["Referência", "Designação", "Lote", "Quantidade", "Unidade", "Localização", "Validade"]];
+    data.forEach((l) => linhas.push([
+        l.artigos?.ref_primavera ?? "", l.artigos?.designacao ?? "", l.numero_lote, l.quantidade_atual,
+        (l.artigos?.unidade ?? "un").toUpperCase(), l.localizacoes?.nome ?? "", l.validade ?? "",
+    ]));
+    const csv = linhas.map((linha) => linha.map(paraCsv).join(";")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `stock_actual_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+});
+
+// --- Rastreabilidade por lote (genealogia FIFO) ---------------------------
+document.getElementById("btnPesquisarRastreio").addEventListener("click", async () => {
+    const numeroLote = document.getElementById("rtLote").value.trim();
+    const resultadoEl = document.getElementById("resultadoRastreio");
+    if (!numeroLote) { resultadoEl.textContent = "Escreve um número de lote."; return; }
+    resultadoEl.textContent = "A procurar...";
+
+    let html = "";
+
+    // Direcção 1: este número é uma PRODUÇÃO — o que entrou nela?
+    const { data: producoes } = await supabaseClient
+        .from("lotes_producao")
+        .select("lote_id, produto, data_producao, quantidade_produzida, quebras")
+        .eq("numero_lote", numeroLote);
+
+    for (const producao of producoes ?? []) {
+        const { data: consumos } = await supabaseClient
+            .from("consumo_lotes")
+            .select("quantidade, lotes_artigo(numero_lote, artigos(designacao))")
+            .eq("lote_producao_id", producao.lote_id);
+        html += `<p style="font-weight:600; margin-top:12px;">Produção "${escaparHtml(producao.produto)}" (${producao.quantidade_produzida} produzidas${producao.quebras > 0 ? `, ${producao.quebras} quebras` : ""}) em ${formatarData(producao.data_producao)}</p>`;
+        html += consumos?.length
+            ? `<p style="color:var(--ink-suave); margin:2px 0 6px;">Matérias-primas/intermédios usados:</p><ul style="margin:0 0 8px 18px;">${consumos.map((c) => `<li>${escaparHtml(c.lotes_artigo?.artigos?.designacao ?? "—")} · lote ${escaparHtml(c.lotes_artigo?.numero_lote ?? "—")} — ${c.quantidade}</li>`).join("")}</ul>`
+            : `<p style="color:var(--ink-suave);">Sem consumo registado (sem receita associada, ou sem stock por lote na altura).</p>`;
+    }
+
+    // Direcção 2: este número é um LOTE DE ARTIGO (matéria-prima ou
+    // intermédio) — para onde foi?
+    const { data: lotesArtigo } = await supabaseClient
+        .from("lotes_artigo")
+        .select("lote_artigo_id, quantidade_atual, artigos(designacao)")
+        .eq("numero_lote", numeroLote);
+
+    for (const lote of lotesArtigo ?? []) {
+        const { data: usos } = await supabaseClient
+            .from("consumo_lotes")
+            .select("quantidade, lotes_producao(produto, numero_lote, data_producao)")
+            .eq("lote_artigo_consumido_id", lote.lote_artigo_id);
+        html += `<p style="font-weight:600; margin-top:12px;">Lote de "${escaparHtml(lote.artigos?.designacao ?? "—")}" (${lote.quantidade_atual} ainda em stock)</p>`;
+        html += usos?.length
+            ? `<p style="color:var(--ink-suave); margin:2px 0 6px;">Usado nestas produções:</p><ul style="margin:0 0 8px 18px;">${usos.map((u) => `<li>${escaparHtml(u.lotes_producao?.produto ?? "—")} · lote ${escaparHtml(u.lotes_producao?.numero_lote ?? "—")} em ${formatarData(u.lotes_producao?.data_producao)} — ${u.quantidade}</li>`).join("")}</ul>`
+            : `<p style="color:var(--ink-suave);">Ainda não foi usado em nenhuma produção.</p>`;
+    }
+
+    if (!producoes?.length && !lotesArtigo?.length) {
+        html = `<p style="color:var(--ink-suave);">Nenhum lote encontrado com esse número.</p>`;
+    }
+    resultadoEl.innerHTML = html;
 });
 
 iniciar();

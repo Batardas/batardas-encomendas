@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qualidade — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-clipboard-check" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Qualidade</h1></div>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <span class="bloco-sino">
+            <button id="botaoSino" onclick="alternarPainelAlertas()" aria-label="Notificações"><i class="ti ti-bell" style="font-size:19px; vertical-align:-4px;" aria-hidden="true"></i><span id="badgeAlertasSino"></span></button>
+            <div id="painelAlertas"></div>
+        </span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Não-conformidades em aberto</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiNcAbertas">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Por confirmar</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiNcConfirmar">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Tempo médio de resolução</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiTempoMedio">—</p>
+        </div>
+    </div>
+
+    <div class="cartao">
+        <h2>Nova auditoria</h2>
+        <div class="linha-form">
+            <select id="auTipo">
+                <option value="higiene">Higiene e boas práticas</option>
+                <option value="temperaturas">Temperaturas</option>
+                <option value="rastreabilidade">Rastreabilidade</option>
+                <option value="pragas">Pragas</option>
+                <option value="rotulos_embalagem">Rótulos e embalagem</option>
+                <option value="alergenios">Alergénios</option>
+                <option value="outro">Outro</option>
+            </select>
+            <input id="auData" type="date">
+        </div>
+        <div class="linha-form">
+            <select id="auZona"><option value="">Sem zona associada</option></select>
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="auArtigoTexto" placeholder="Artigo/lote associado (opcional)..." autocomplete="off">
+                <input type="hidden" id="auArtigo">
+                <div id="auArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+        </div>
+        <textarea id="auObservacoes" placeholder="Observações da auditoria..." rows="3" style="width:100%; font-family:inherit; font-size:14px; padding:10px; border-radius:8px; border:1px solid var(--linha); margin-top:10px;"></textarea>
+
+        <p style="font-size:13px; font-weight:600; margin:18px 0 6px;">Não-conformidades encontradas (opcional)</p>
+        <div id="listaNcNovaAuditoria"></div>
+        <div class="linha-form">
+            <input id="ncDescricao" placeholder="Descrição da não-conformidade">
+            <select id="ncGravidade">
+                <option value="Minor">Minor</option>
+                <option value="Major">Major</option>
+                <option value="Crítica">Crítica</option>
+            </select>
+        </div>
+        <div class="linha-form">
+            <input id="ncAccaoCorrectiva" placeholder="Acção correctiva necessária">
+            <input id="ncPrazo" type="date">
+        </div>
+        <div class="linha-form">
+            <select id="ncResponsavel"><option value="">Escolhe o responsável...</option></select>
+            <button class="secundario" id="btnAdicionarNc">Adicionar à lista</button>
+        </div>
+
+        <button id="btnGuardarAuditoria" style="margin-top:16px;">Guardar auditoria</button>
+        <p id="erroAuditoria" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Quando resolveres, marca "Por confirmar" — a Qualidade recebe um alerta para validar e fechar.
+        </p>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoNcMinhas"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoConfirmarNc" style="display:none;">
+        <h2>Por confirmar (Qualidade)</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Responsável</th><th>Gravidade</th><th>Acção</th></tr></thead>
+            <tbody id="corpoNcConfirmar"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Auditorias recentes</h2>
+        <table>
+            <thead><tr><th>Tipo</th><th>Data</th><th>Zona</th><th>Não-conformidades</th></tr></thead>
+            <tbody id="corpoAuditorias"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Evolução — tempo de resolução</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">Dias médios entre criação e confirmação, por mês.</p>
+        <div id="blocoEvolucaoNc" style="display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:16px;"></div>
+        <p id="semDadosNc" style="font-size:13px; color:var(--ink-suave); display:none;">Sem não-conformidades resolvidas suficientes ainda.</p>
+    </div>
+</main>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+const NOME_TIPO_AUDITORIA = {
+    higiene: "Higiene e boas práticas", temperaturas: "Temperaturas", rastreabilidade: "Rastreabilidade",
+    pragas: "Pragas", rotulos_embalagem: "Rótulos e embalagem", alergenios: "Alergénios", outro: "Outro",
+};
+
+let ncPendentesDaAuditoriaActual = [];
+
+async function iniciar() {
+    const contexto = await exigirRole(["qualidade", "admin"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    await inicializarAlertas();
+
+    await carregarZonasAuditoria();
+    await carregarResponsaveis();
+    await activarPesquisaArtigo("auArtigoTexto", "auArtigo", "auArtigoResultados");
+    document.getElementById("auData").valueAsDate = new Date();
+
+    await carregarKpis();
+    await carregarMinhasNc(contexto.session.user.id);
+    if (contexto.perfil.role === "qualidade" || contexto.perfil.role === "admin") {
+        document.getElementById("cartaoConfirmarNc").style.display = "block";
+        await carregarNcParaConfirmar();
+    }
+    await carregarAuditorias();
+    await carregarGraficoEvolucaoNc();
+}
+
+async function carregarZonasAuditoria() {
+    const { data } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    const select = document.getElementById("auZona");
+    select.innerHTML = `<option value="">Sem zona associada</option>` +
+        (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+}
+
+async function carregarResponsaveis() {
+    const { data } = await supabaseClient.from("perfis").select("id, nome").order("nome");
+    const select = document.getElementById("ncResponsavel");
+    select.innerHTML = `<option value="">Escolhe o responsável...</option>` +
+        (data ?? []).map((p) => `<option value="${p.id}">${escaparHtml(p.nome)}</option>`).join("");
+}
+
+// --- Montar a lista de não-conformidades antes de gravar a auditoria ------
+document.getElementById("btnAdicionarNc").addEventListener("click", () => {
+    const descricao = document.getElementById("ncDescricao").value.trim();
+    const gravidade = document.getElementById("ncGravidade").value;
+    const accaoCorrectiva = document.getElementById("ncAccaoCorrectiva").value.trim();
+    const prazo = document.getElementById("ncPrazo").value || null;
+    const responsavelId = document.getElementById("ncResponsavel").value || null;
+
+    if (!descricao) { toast("Escreve a descrição da não-conformidade.", "erro"); return; }
+
+    ncPendentesDaAuditoriaActual.push({ descricao, gravidade, accao_correctiva: accaoCorrectiva || null, prazo, responsavel_id: responsavelId });
+    renderizarNcPendentes();
+
+    document.getElementById("ncDescricao").value = "";
+    document.getElementById("ncAccaoCorrectiva").value = "";
+    document.getElementById("ncPrazo").value = "";
+    document.getElementById("ncResponsavel").value = "";
+});
+
+function renderizarNcPendentes() {
+    const container = document.getElementById("listaNcNovaAuditoria");
+    container.innerHTML = ncPendentesDaAuditoriaActual.length ? "" : `<p style="font-size:13px; color:var(--ink-suave);">Nenhuma adicionada ainda.</p>`;
+    ncPendentesDaAuditoriaActual.forEach((nc, i) => {
+        const div = document.createElement("div");
+        div.style.cssText = "padding:8px 10px; background:var(--surface-recuado); border-radius:8px; margin-bottom:6px; font-size:13px; display:flex; justify-content:space-between; align-items:center;";
+        div.innerHTML = `<span><strong>${escaparHtml(nc.gravidade)}</strong> — ${escaparHtml(nc.descricao)}</span>`;
+        const btn = document.createElement("button");
+        btn.className = "secundario";
+        btn.textContent = "Remover";
+        btn.addEventListener("click", () => { ncPendentesDaAuditoriaActual.splice(i, 1); renderizarNcPendentes(); });
+        div.appendChild(btn);
+        container.appendChild(div);
+    });
+}
+
+document.getElementById("btnGuardarAuditoria").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroAuditoria");
+    erroEl.textContent = "";
+
+    const tipo = document.getElementById("auTipo").value;
+    const data = document.getElementById("auData").value;
+    const zonaId = document.getElementById("auZona").value || null;
+    const artigoId = document.getElementById("auArtigo").value || null;
+    const observacoes = document.getElementById("auObservacoes").value.trim() || null;
+
+    if (!data) { erroEl.textContent = "Escolhe a data da auditoria."; return; }
+
+    const { data: auditoria, error } = await supabaseClient
+        .from("auditorias")
+        .insert({ tipo, data_auditoria: data, zona_id: zonaId, lote_artigo_id: artigoId, observacoes })
+        .select("id").single();
+    if (error) { erroEl.textContent = "Erro ao guardar: " + traduzirErro(error.message); return; }
+
+    for (const nc of ncPendentesDaAuditoriaActual) {
+        await supabaseClient.from("nao_conformidades").insert({ ...nc, auditoria_id: auditoria.id });
+    }
+
+    toast(`Auditoria registada${ncPendentesDaAuditoriaActual.length ? ` com ${ncPendentesDaAuditoriaActual.length} não-conformidade(s)` : ""}.`, "sucesso");
+    ncPendentesDaAuditoriaActual = [];
+    renderizarNcPendentes();
+    document.getElementById("auObservacoes").value = "";
+    document.getElementById("auArtigoTexto").value = "";
+    document.getElementById("auArtigo").value = "";
+    carregarKpis();
+    carregarAuditorias();
+});
+
+// --- Não-conformidades atribuídas a mim ------------------------------------
+async function carregarMinhasNc(meuId) {
+    const { data, error } = await supabaseClient
+        .from("nao_conformidades")
+        .select("id, descricao, gravidade, prazo, estado")
+        .eq("responsavel_id", meuId)
+        .neq("estado", "Resolvida")
+        .order("prazo", { ascending: true, nullsFirst: false });
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoNcMinhas");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem não-conformidades atribuídas a ti.</td></tr>`;
+    data.forEach((nc) => {
+        const tr = document.createElement("tr");
+        const acao = nc.estado === "Por confirmar"
+            ? `<span class="badge Carregada">Aguarda confirmação</span>`
+            : `<button onclick="marcarNcPorConfirmar('${nc.id}')">Marcar resolvida</button>`;
+        tr.innerHTML = `
+            <td data-rotulo="Descrição">${escaparHtml(nc.descricao)}</td>
+            <td data-rotulo="Gravidade">${escaparHtml(nc.gravidade)}</td>
+            <td data-rotulo="Prazo">${nc.prazo ? formatarData(nc.prazo) : "—"}</td>
+            <td data-rotulo="Estado">${escaparHtml(nc.estado)}</td>
+            <td data-rotulo="Acção">${acao}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+async function marcarNcPorConfirmar(ncId) {
+    const { error } = await supabaseClient.from("nao_conformidades")
+        .update({ estado: "Por confirmar", resolvido_em: new Date().toISOString() })
+        .eq("id", ncId);
+    if (error) { toast("Erro: " + error.message, "erro"); return; }
+    toast("Marcado como resolvido — a Qualidade vai confirmar.", "sucesso");
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    carregarMinhasNc(session.user.id);
+    actualizarContadorAlertas();
+}
+
+// --- Confirmar como Resolvida (Qualidade) ----------------------------------
+async function carregarNcParaConfirmar() {
+    const { data, error } = await supabaseClient
+        .from("nao_conformidades")
+        .select("id, descricao, gravidade, perfis!nao_conformidades_responsavel_id_fkey(nome)")
+        .eq("estado", "Por confirmar");
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoNcConfirmar");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Nada à espera de confirmação.</td></tr>`;
+    data.forEach((nc) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Descrição">${escaparHtml(nc.descricao)}</td>
+            <td data-rotulo="Responsável">${escaparHtml(nc.perfis?.nome ?? "—")}</td>
+            <td data-rotulo="Gravidade">${escaparHtml(nc.gravidade)}</td>
+            <td data-rotulo="Acção"><button onclick="confirmarNcResolvida('${nc.id}')">Confirmar resolvida</button></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+async function confirmarNcResolvida(ncId) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { error } = await supabaseClient.from("nao_conformidades")
+        .update({ estado: "Resolvida", confirmado_por: session.user.id, confirmado_em: new Date().toISOString() })
+        .eq("id", ncId);
+    if (error) { toast("Erro: " + error.message, "erro"); return; }
+    toast("Não-conformidade confirmada como resolvida.", "sucesso");
+    carregarNcParaConfirmar();
+    carregarKpis();
+    carregarGraficoEvolucaoNc();
+}
+
+// --- KPIs -------------------------------------------------------------------
+async function carregarKpis() {
+    const { count: abertas } = await supabaseClient.from("nao_conformidades").select("id", { count: "exact", head: true }).in("estado", ["Pendente", "Em resolução"]);
+    const { count: porConfirmar } = await supabaseClient.from("nao_conformidades").select("id", { count: "exact", head: true }).eq("estado", "Por confirmar");
+    document.getElementById("kpiNcAbertas").textContent = abertas ?? 0;
+    document.getElementById("kpiNcConfirmar").textContent = porConfirmar ?? 0;
+
+    const { data: resolvidas } = await supabaseClient
+        .from("nao_conformidades").select("criado_em, confirmado_em").eq("estado", "Resolvida").not("confirmado_em", "is", null);
+    if (resolvidas?.length) {
+        const mediaDias = resolvidas.reduce((soma, nc) => soma + (new Date(nc.confirmado_em) - new Date(nc.criado_em)) / 86400000, 0) / resolvidas.length;
+        document.getElementById("kpiTempoMedio").textContent = mediaDias.toFixed(1) + " dias";
+    } else {
+        document.getElementById("kpiTempoMedio").textContent = "—";
+    }
+}
+
+// --- Auditorias recentes -----------------------------------------------------
+async function carregarAuditorias() {
+    const { data, error } = await supabaseClient
+        .from("auditorias")
+        .select("id, tipo, data_auditoria, localizacoes(nome), nao_conformidades(id)")
+        .order("data_auditoria", { ascending: false })
+        .limit(30);
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoAuditorias");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem auditorias ainda.</td></tr>`;
+    data.forEach((au) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Tipo">${escaparHtml(NOME_TIPO_AUDITORIA[au.tipo] ?? au.tipo)}</td>
+            <td data-rotulo="Data">${formatarData(au.data_auditoria)}</td>
+            <td data-rotulo="Zona">${escaparHtml(au.localizacoes?.nome ?? "—")}</td>
+            <td data-rotulo="Não-conformidades">${au.nao_conformidades?.length ?? 0}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+// --- Gráfico de evolução do tempo de resolução ------------------------------
+async function carregarGraficoEvolucaoNc() {
+    const { data } = await supabaseClient
+        .from("nao_conformidades").select("criado_em, confirmado_em").eq("estado", "Resolvida").not("confirmado_em", "is", null);
+
+    const bloco = document.getElementById("blocoEvolucaoNc");
+    const aviso = document.getElementById("semDadosNc");
+    if (!data || data.length < 2) {
+        bloco.innerHTML = "";
+        aviso.style.display = "block";
+        return;
+    }
+    aviso.style.display = "none";
+
+    const porMes = {};
+    data.forEach((nc) => {
+        const mes = nc.confirmado_em.slice(0, 7);
+        const dias = (new Date(nc.confirmado_em) - new Date(nc.criado_em)) / 86400000;
+        if (!porMes[mes]) porMes[mes] = [];
+        porMes[mes].push(dias);
+    });
+    const meses = Object.keys(porMes).sort();
+    const medias = meses.map((m) => porMes[m].reduce((a, b) => a + b, 0) / porMes[m].length);
+    const maxValor = Math.max(...medias, 1);
+
+    bloco.innerHTML = meses.map((mes, i) => `
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <span style="font-size:11px; color:var(--ink-suave);">${medias[i].toFixed(1)}d</span>
+            <div style="width:100%; background:var(--accent-forte); border-radius:4px 4px 0 0; height:${(medias[i] / maxValor) * 100}px;"></div>
+            <span style="font-size:10px; color:var(--ink-suave);">${mes.slice(5)}/${mes.slice(2, 4)}</span>
+        </div>
+    `).join("");
+}
+
+iniciar();
+</script>
+</body>
+</html>

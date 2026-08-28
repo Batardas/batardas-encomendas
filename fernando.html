@@ -10,8 +10,17 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div class="layout-admin">
+<nav class="barra-lateral">
+    <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button class="nav-item activo" data-secao="picking"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Picking</button>
+    <button class="nav-item" data-secao="pedidos"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Pedidos <span class="contador" id="contadorPedidos" style="display:none;"></span></button>
+    <button class="nav-item" data-secao="movimentos"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Movimentos de stock</button>
+</nav>
+
+<div class="conteudo-admin">
 <header>
-    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-package" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Preparação de Encomendas</h1></div>
+    <h1 id="tituloSecao">Picking</h1>
     <div>
         <span class="utilizador" id="nomeUtilizador"></span>
         <span class="bloco-sino">
@@ -23,6 +32,18 @@
 </header>
 
 <main>
+<section class="painel activo" data-secao="picking">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Para preparar</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiParaPreparar">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Pedidos pendentes</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiPedidosPendentes">—</p>
+        </div>
+    </div>
+
     <div class="cartao">
         <h2>Para preparar (picking)</h2>
         <table>
@@ -38,15 +59,19 @@
             <tbody id="corpoHistorico"></tbody>
         </table>
     </div>
+</section>
 
-    <div class="cartao" id="pedidos">
+<section class="painel" data-secao="pedidos" id="pedidos">
+    <div class="cartao">
         <h2>Pedidos de armazém pendentes</h2>
         <table>
             <thead><tr><th>Artigo</th><th>Quantidade</th><th>Acção</th></tr></thead>
             <tbody id="corpoPedidosPendentes"></tbody>
         </table>
     </div>
+</section>
 
+<section class="painel" data-secao="movimentos">
     <div class="cartao">
         <h2>Registar movimento de stock</h2>
         <div class="linha-form">
@@ -80,7 +105,10 @@
         </div>
         <p id="erroMovimento" class="erro"></p>
     </div>
+</section>
 </main>
+</div>
+</div>
 
 <script src="js/supabaseClient.js"></script>
 <script>
@@ -108,16 +136,25 @@ async function iniciar() {
 async function carregarLotesArtigo() {
     const { data, error } = await supabaseClient
         .from("lotes_artigo")
-        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao)")
+        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao, unidade)")
         .order("numero_lote");
     if (error) { console.error(error); return; }
 
     const opcoes = data.length
-        ? data.map((l) => `<option value="${l.lote_artigo_id}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
+        ? data.map((l) => `<option value="${l.lote_artigo_id}" data-unidade="${escaparHtml((l.artigos?.unidade || "un").toUpperCase())}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
         : `<option value="">Sem lotes carregados ainda</option>`;
     document.getElementById("mLoteOrigem").innerHTML = opcoes;
     document.getElementById("mLoteDestino").innerHTML = opcoes;
+    actualizarRotuloUnidade();
 }
+
+function actualizarRotuloUnidade() {
+    const loteSelect = document.getElementById("mLoteOrigem");
+    const opcaoEscolhida = loteSelect.options[loteSelect.selectedIndex];
+    const unidadeReal = opcaoEscolhida?.dataset.unidade || "UN";
+    document.getElementById("mUnidade").options[0].textContent = unidadeReal === "UN" ? "Unidades" : unidadeReal;
+}
+document.getElementById("mLoteOrigem").addEventListener("change", actualizarRotuloUnidade);
 
 async function carregarPedidosPendentes() {
     const { data, error } = await supabaseClient
@@ -139,6 +176,11 @@ async function carregarPedidosPendentes() {
         `;
         corpo.appendChild(tr);
     });
+
+    document.getElementById("kpiPedidosPendentes").textContent = data.length;
+    const contador = document.getElementById("contadorPedidos");
+    if (data.length) { contador.textContent = data.length; contador.style.display = "inline-flex"; }
+    else { contador.style.display = "none"; }
 }
 
 async function atenderPedido(pedidoId) {
@@ -240,6 +282,7 @@ async function carregar() {
         `;
         corpoPrep.appendChild(tr);
     });
+    document.getElementById("kpiParaPreparar").textContent = paraPreparar.length;
 
     const { data: historico, error: erro2 } = await supabaseClient
         .from("encomendas")
@@ -276,6 +319,19 @@ async function marcarPronta(encomendaId) {
     carregar();
     toast("Picking concluído — encomenda pronta para carregar.", "sucesso");
 }
+
+const TITULOS_SECAO = { picking: "Picking", pedidos: "Pedidos de armazém", movimentos: "Movimentos de stock" };
+
+function mudarSecao(secao) {
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
+    document.querySelectorAll(".painel").forEach((p) => p.classList.toggle("activo", p.dataset.secao === secao));
+    document.getElementById("tituloSecao").textContent = TITULOS_SECAO[secao] ?? "Picking";
+    localStorage.setItem("batardas_secao_fernando", secao);
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
+});
+mudarSecao(localStorage.getItem("batardas_secao_fernando") ?? "picking");
 
 iniciar();
 </script>

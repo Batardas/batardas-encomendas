@@ -13,8 +13,19 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div class="layout-admin">
+<nav class="barra-lateral">
+    <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button class="nav-item activo" data-secao="visao-geral"><i class="ti ti-chart-bar" aria-hidden="true"></i> Visão geral</button>
+    <button class="nav-item" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
+    <button class="nav-item" data-secao="precos" id="navPrecos" style="display:none;"><i class="ti ti-tags" aria-hidden="true"></i> Preços &amp; Receitas</button>
+    <button class="nav-item" data-secao="custos" id="navCustos" style="display:none;"><i class="ti ti-chart-line" aria-hidden="true"></i> Custos</button>
+    <button class="nav-item" data-secao="vendas" id="navVendas" style="display:none;"><i class="ti ti-report-money" aria-hidden="true"></i> Vendas</button>
+</nav>
+
+<div class="conteudo-admin">
 <header>
-    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-eye" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Estado das Encomendas</h1></div>
+    <h1 id="tituloSecao">Visão geral</h1>
     <div>
         <span class="utilizador" id="nomeUtilizador"></span>
         <span class="bloco-sino">
@@ -26,6 +37,7 @@
 </header>
 
 <main>
+<section class="painel activo" data-secao="visao-geral">
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
         <div class="cartao" style="margin-bottom:0; padding:16px;">
             <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">No prazo (30 dias)</p>
@@ -58,8 +70,10 @@
             <tbody id="corpoTopClientes"></tbody>
         </table>
     </div>
+</section>
 
-    <div class="cartao" id="cartaoValorPotencial" style="display:none;">
+<section class="painel" data-secao="precos">
+    <div class="cartao" id="cartaoValorPotencial">
         <h2>Valor de stock e potencial por cliente</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             "Potencial" é hipotético — assume todo o stock desse produto vendido a esse cliente ao preço acordado. Não soma entre clientes.
@@ -74,25 +88,7 @@
         </table>
     </div>
 
-    <div class="cartao" id="cartaoEvolucaoCustos" style="display:none;">
-        <h2>Evolução de custos — matérias-primas e utilitários</h2>
-        <div class="linha-form">
-            <select id="evTipo">
-                <option value="artigo">Matéria-prima / artigo</option>
-                <option value="utilitario">Utilitário</option>
-            </select>
-            <div class="campo-pesquisa-artigo" id="blocoEvArtigo">
-                <input type="text" id="evArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
-                <input type="hidden" id="evAlvo">
-                <div id="evArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
-            </div>
-            <select id="evAlvoUtilitario" style="display:none;"></select>
-        </div>
-        <div id="blocoEvolucaoCustos" style="display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:16px;"></div>
-        <p id="semDadosEvolucao" style="font-size:13px; color:var(--ink-suave); display:none;">Sem histórico suficiente para este item ainda.</p>
-    </div>
-
-    <div class="cartao" id="cartaoReceitas" style="display:none;">
+    <div class="cartao" id="cartaoReceitas">
         <h2>Receitas (BOM) — custos actuais</h2>
         <input id="rcFiltro" placeholder="Filtrar por produto..." style="margin-bottom:12px;">
         <table>
@@ -101,7 +97,7 @@
         </table>
     </div>
 
-    <div class="cartao" id="cartaoAlertarPreco" style="display:none;">
+    <div class="cartao" id="cartaoAlertarPreco">
         <h2>Alertar mudança de preço</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Se souberes que um custo mudou (ex. o fornecedor aumentou o preço), avisa o admin — não altera nada sozinho, só cria um alerta para ele confirmar.
@@ -127,12 +123,34 @@
                 <option value="PCK6">PCK6 — Pack 6</option>
                 <option value="MIL">MIL — Milheiro</option>
             </select>
-            <button id="btnAlertarPreco">Enviar alerta ao admin</button>
+            <button id="btnAlertarPreco">Enviar alerta</button>
         </div>
         <p id="erroAlertarPreco" class="erro"></p>
     </div>
+</section>
 
-    <div class="cartao" id="cartaoVendas" style="display:none;">
+<section class="painel" data-secao="custos">
+    <div class="cartao" id="cartaoEvolucaoCustos">
+        <h2>Evolução de custos — matérias-primas e utilitários</h2>
+        <div class="linha-form">
+            <select id="evTipo">
+                <option value="artigo">Matéria-prima / artigo</option>
+                <option value="utilitario">Utilitário</option>
+            </select>
+            <div class="campo-pesquisa-artigo" id="blocoEvArtigo">
+                <input type="text" id="evArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="evAlvo">
+                <div id="evArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="evAlvoUtilitario" style="display:none;"></select>
+        </div>
+        <div id="blocoEvolucaoCustos" style="display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:16px;"></div>
+        <p id="semDadosEvolucao" style="font-size:13px; color:var(--ink-suave); display:none;">Sem histórico suficiente para este item ainda.</p>
+    </div>
+</section>
+
+<section class="painel" data-secao="vendas">
+    <div class="cartao" id="cartaoVendas">
         <h2>Vendas despachadas — valor sem IVA</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Soma o valor das encomendas já carregadas (despachadas), ao preço de contrato de cada cliente. Escolhe o intervalo e calcula.
@@ -148,8 +166,10 @@
             <tbody id="corpoVendas"></tbody>
         </table>
     </div>
+</section>
 
-    <div class="cartao">
+<section class="painel" data-secao="encomendas">
+    <div class="cartao" style="margin-top:0;">
         <h2>Encomendas</h2>
         <div class="linha-form">
             <input id="pesquisa" placeholder="Pesquisar por cliente...">
@@ -161,7 +181,10 @@
             <tbody id="corpoTabela"></tbody>
         </table>
     </div>
+</section>
 </main>
+</div>
+</div>
 
 <script src="js/supabaseClient.js"></script>
 <script>
@@ -176,15 +199,13 @@ async function iniciar() {
     await carregarKpis();
 
     // Preços de contrato e evolução de custos são informação comercial
-    // sensível — só admin e consulta veem estas secções. A RLS já bloqueia
-    // os dados para o Nuno/Fernando, mas isto evita mostrar-lhes cartões
-    // vazios sem explicação.
+    // sensível — só admin e consulta veem estes separadores. A RLS já
+    // bloqueia os dados para o Nuno/Fernando, mas isto evita mostrar-lhes
+    // separadores vazios sem explicação.
     if (contexto.perfil.role === "admin" || contexto.perfil.role === "consulta") {
-        document.getElementById("cartaoValorPotencial").style.display = "block";
-        document.getElementById("cartaoEvolucaoCustos").style.display = "block";
-        document.getElementById("cartaoReceitas").style.display = "block";
-        document.getElementById("cartaoAlertarPreco").style.display = "block";
-        document.getElementById("cartaoVendas").style.display = "block";
+        document.getElementById("navPrecos").style.display = "flex";
+        document.getElementById("navCustos").style.display = "flex";
+        document.getElementById("navVendas").style.display = "flex";
         await carregarValorPotencial();
         await activarPesquisaArtigo("evArtigoTexto", "evAlvo", "evArtigoResultados", carregarGraficoEvolucao);
         await carregarOpcoesEvolucao();
@@ -199,6 +220,14 @@ async function iniciar() {
             carregarKpis();
         })
         .subscribe();
+
+    // Restaura o último separador visitado, só depois de sabermos quais
+    // estão mesmo visíveis para este perfil (evita cair num separador
+    // sensível escondido, se a preferência guardada for de outra sessão).
+    const seccaoGuardada = localStorage.getItem("batardas_secao_consulta");
+    const botaoGuardado = seccaoGuardada && document.querySelector(`.nav-item[data-secao="${seccaoGuardada}"]`);
+    const seccaoVisivel = botaoGuardado && getComputedStyle(botaoGuardado).display !== "none";
+    mudarSecao(seccaoVisivel ? seccaoGuardada : "visao-geral");
 }
 
 let ultimosPrecosClientes = [];
@@ -644,6 +673,18 @@ document.getElementById("btnCalcularVendas").addEventListener("click", async () 
 });
 
 iniciar();
+
+const TITULOS_SECAO = { "visao-geral": "Visão geral", encomendas: "Encomendas", precos: "Preços & Receitas", custos: "Custos", vendas: "Vendas" };
+
+function mudarSecao(secao) {
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
+    document.querySelectorAll(".painel").forEach((p) => p.classList.toggle("activo", p.dataset.secao === secao));
+    document.getElementById("tituloSecao").textContent = TITULOS_SECAO[secao] ?? "Visão geral";
+    localStorage.setItem("batardas_secao_consulta", secao);
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
+});
 </script>
 </body>
 </html>

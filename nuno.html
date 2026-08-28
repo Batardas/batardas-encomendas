@@ -12,8 +12,19 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div class="layout-admin">
+<nav class="barra-lateral">
+    <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button class="nav-item activo" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
+    <button class="nav-item" data-secao="producao"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i> Produção diária</button>
+    <button class="nav-item" data-secao="plano"><i class="ti ti-calendar-week" aria-hidden="true"></i> Plano de produção</button>
+    <button class="nav-item" data-secao="pedidos"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Pedidos ao armazém</button>
+    <button class="nav-item" data-secao="movimentos"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Movimentos de stock</button>
+</nav>
+
+<div class="conteudo-admin">
 <header>
-    <div style="display:flex; align-items:center; gap:14px;"><img src="img/logo.png" alt="Batardas" style="height:26px; cursor:pointer;" onclick="irParaInicio()"><h1><i class="ti ti-tools-kitchen-2" style="font-size:20px; vertical-align:-3px; margin-right:8px;" aria-hidden="true"></i>Painel de Produção</h1></div>
+    <h1 id="tituloSecao">Encomendas</h1>
     <div>
         <span class="utilizador" id="nomeUtilizador"></span>
         <span class="bloco-sino">
@@ -25,6 +36,7 @@
 </header>
 
 <main>
+<section class="painel activo" data-secao="encomendas">
     <div class="filtros">
         <button data-estado="todos" class="filtro-activo">Todas</button>
         <button data-estado="Registada">Registadas</button>
@@ -40,8 +52,10 @@
         </thead>
         <tbody id="corpoTabela"></tbody>
     </table>
+</section>
 
-    <div class="cartao" style="margin-top:32px;">
+<section class="painel" data-secao="producao">
+    <div class="cartao" style="margin-top:0;">
         <h2>Produção diária</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Se já produziste este artigo hoje, pergunta-se se queres somar ao lote existente ou criar um novo.
@@ -58,13 +72,17 @@
                 <option value="S">S — Salgados</option>
             </select>
         </div>
-        <div class="linha-form">
+        <div class="linha-form" id="linhaNumeroProducao">
             <input id="pdDataProducao" type="date">
             <input id="pdNumeroProducao" type="number" min="1" placeholder="Nº de produção do dia">
         </div>
         <div class="linha-form">
-            <input id="pdQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade produzida">
+            <input id="pdQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade produzida (o que ficou bom)">
             <input id="pdValidade" type="date">
+        </div>
+        <div class="linha-form">
+            <input id="pdQuebras" type="number" min="0" step="0.01" placeholder="Quebras (opcional — o que se perdeu)" value="0">
+            <input id="pdMotivoQuebra" placeholder="Motivo da quebra" style="display:none;">
         </div>
         <p style="font-size:13px; color:var(--ink-suave); margin:4px 0 12px;">
             Lote calculado: <code class="mono" id="pdLotePreview" style="font-size:15px; font-weight:600;">—</code>
@@ -72,7 +90,9 @@
         <button id="btnRegistarProducao">Registar produção</button>
         <p id="erroProducaoDiaria" class="erro"></p>
     </div>
+</section>
 
+<section class="painel" data-secao="plano">
     <div class="cartao">
         <h2>Plano de produção — o que vou produzir</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
@@ -107,7 +127,9 @@
             <tbody id="corpoNecessidades"></tbody>
         </table>
     </div>
+</section>
 
+<section class="painel" data-secao="pedidos">
     <div class="cartao">
         <h2>Pedir ao armazém</h2>
         <div class="linha-form">
@@ -129,7 +151,9 @@
             <tbody id="corpoPedidos"></tbody>
         </table>
     </div>
+</section>
 
+<section class="painel" data-secao="movimentos">
     <div class="cartao">
         <h2>Registar movimento de stock</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
@@ -166,7 +190,10 @@
         </div>
         <p id="erroMovimento" class="erro"></p>
     </div>
+</section>
 </main>
+</div>
+</div>
 
 <script src="js/supabaseClient.js"></script>
 <script>
@@ -179,7 +206,7 @@ async function iniciar() {
     await inicializarAlertas();
     await carregar();
     await activarPesquisaArtigo("fArtigoTexto", "fArtigo", "fArtigoResultados");
-    await activarPesquisaArtigo("pdArtigoTexto", "pdArtigo", "pdArtigoResultados");
+    await activarPesquisaArtigo("pdArtigoTexto", "pdArtigo", "pdArtigoResultados", carregarTipoProdutoSeleccionado);
     await activarPesquisaArtigo("ppArtigoTexto", "ppArtigo", "ppArtigoResultados");
     await carregarPedidos();
     await carregarLotesArtigo();
@@ -201,16 +228,25 @@ async function iniciar() {
 async function carregarLotesArtigo() {
     const { data, error } = await supabaseClient
         .from("lotes_artigo")
-        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao)")
+        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao, unidade)")
         .order("numero_lote");
     if (error) { console.error(error); return; }
 
     const opcoes = data.length
-        ? data.map((l) => `<option value="${l.lote_artigo_id}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
+        ? data.map((l) => `<option value="${l.lote_artigo_id}" data-unidade="${escaparHtml((l.artigos?.unidade || "un").toUpperCase())}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
         : `<option value="">Sem lotes carregados ainda</option>`;
     document.getElementById("mLoteOrigem").innerHTML = opcoes;
     document.getElementById("mLoteDestino").innerHTML = opcoes;
+    actualizarRotuloUnidade();
 }
+
+function actualizarRotuloUnidade() {
+    const loteSelect = document.getElementById("mLoteOrigem");
+    const opcaoEscolhida = loteSelect.options[loteSelect.selectedIndex];
+    const unidadeReal = opcaoEscolhida?.dataset.unidade || "UN";
+    document.getElementById("mUnidade").options[0].textContent = unidadeReal === "UN" ? "Unidades" : unidadeReal;
+}
+document.getElementById("mLoteOrigem").addEventListener("change", actualizarRotuloUnidade);
 
 async function carregarZonas() {
     const { data, error } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
@@ -427,12 +463,50 @@ document.querySelectorAll(".filtros button").forEach((btn) => {
     });
 });
 
-// --- Produção diária (criar/somar lotes de produto acabado) ---------------
+// --- Produção diária (criar/somar lotes) -----------------------------------
+// PA recebe o código oficial (fórmula ano+categoria+dia+nº+juliano);
+// Intermédio (massa, recheio) recebe um lote interno simples e entra logo
+// em stock, pronto a ser usado noutra receita — a matéria-prima nem chega
+// a aparecer aqui, porque não é "produzida" pelo Nuno.
+let tipoProdutoActual = "pa";
+
+async function carregarTipoProdutoSeleccionado(artigoId) {
+    const erroEl = document.getElementById("erroProducaoDiaria");
+    erroEl.textContent = "";
+    if (!artigoId) { tipoProdutoActual = "pa"; return; }
+
+    const { data } = await supabaseClient.from("artigos").select("tipo_produto").eq("artigo_id", artigoId).maybeSingle();
+    tipoProdutoActual = data?.tipo_produto ?? "pa";
+
+    if (tipoProdutoActual === "materia_prima") {
+        erroEl.textContent = "Este artigo é uma matéria-prima — não é produzido aqui, entra por compra/importação.";
+    }
+
+    const ehIntermedio = tipoProdutoActual === "intermedio";
+    document.getElementById("pdCategoria").style.display = ehIntermedio ? "none" : "block";
+    document.getElementById("linhaNumeroProducao").style.display = ehIntermedio ? "none" : "grid";
+    calcularPreviewLoteDiario();
+}
+
+function gerarLoteInterno() {
+    const agora = new Date();
+    const data = agora.toISOString().slice(0, 10).replace(/-/g, "");
+    const hora = String(agora.getHours()).padStart(2, "0") + String(agora.getMinutes()).padStart(2, "0");
+    return `INT-${data}-${hora}`;
+}
+
 function calcularPreviewLoteDiario() {
+    const preview = document.getElementById("pdLotePreview");
+    if (tipoProdutoActual === "intermedio") {
+        preview.textContent = "Gerado automaticamente ao registares (ex. INT-20260828-1430)";
+        const campoValidade = document.getElementById("pdValidade");
+        if (!campoValidade.dataset.editadoManualmente) campoValidade.value = "";
+        return;
+    }
+
     const dataProducao = document.getElementById("pdDataProducao").value;
     const categoria = document.getElementById("pdCategoria").value;
     const numeroProducao = document.getElementById("pdNumeroProducao").value;
-    const preview = document.getElementById("pdLotePreview");
     if (dataProducao && numeroProducao) {
         preview.textContent = calcularCodigoLote(dataProducao, categoria, numeroProducao);
     } else {
@@ -452,31 +526,44 @@ document.getElementById("pdValidade").addEventListener("input", (e) => {
 document.getElementById("pdDataProducao").valueAsDate = new Date();
 calcularPreviewLoteDiario();
 
+document.getElementById("pdQuebras").addEventListener("input", (e) => {
+    document.getElementById("pdMotivoQuebra").style.display = Number(e.target.value) > 0 ? "block" : "none";
+});
+
 document.getElementById("btnRegistarProducao").addEventListener("click", async () => {
     const erroEl = document.getElementById("erroProducaoDiaria");
     erroEl.textContent = "";
 
     const artigoId = document.getElementById("pdArtigo").value;
-    const dataProducao = document.getElementById("pdDataProducao").value;
-    const categoria = document.getElementById("pdCategoria").value;
-    const numeroProducao = document.getElementById("pdNumeroProducao").value;
     const quantidade = Number(document.getElementById("pdQuantidade").value);
+    const quebras = Number(document.getElementById("pdQuebras").value) || 0;
+    const motivoQuebra = document.getElementById("pdMotivoQuebra").value.trim();
     const validade = document.getElementById("pdValidade").value || null;
 
-    if (!artigoId || !dataProducao || !numeroProducao || !quantidade) {
-        erroEl.textContent = "Preenche produto, data, número de produção e quantidade.";
-        return;
-    }
+    if (!artigoId || !quantidade) { erroEl.textContent = "Preenche produto e quantidade."; return; }
+    if (tipoProdutoActual === "materia_prima") { erroEl.textContent = "Matérias-primas não se registam aqui — entram por compra/importação."; return; }
+    if (quebras > 0 && !motivoQuebra) { erroEl.textContent = "Escreve o motivo da quebra."; return; }
 
     const artigo = await obterArtigoPorId(artigoId);
-    const numeroLote = calcularCodigoLote(dataProducao, categoria, numeroProducao);
+
+    let dataProducao, numeroLote;
+    if (tipoProdutoActual === "intermedio") {
+        dataProducao = new Date().toISOString().slice(0, 10);
+        numeroLote = gerarLoteInterno();
+    } else {
+        dataProducao = document.getElementById("pdDataProducao").value;
+        const categoria = document.getElementById("pdCategoria").value;
+        const numeroProducao = document.getElementById("pdNumeroProducao").value;
+        if (!dataProducao || !numeroProducao) { erroEl.textContent = "Preenche data e número de produção."; return; }
+        numeroLote = calcularCodigoLote(dataProducao, categoria, numeroProducao);
+    }
 
     // Se já houver um lote deste artigo produzido hoje, pergunta se soma
     // a esse em vez de criar duplicado — é o que evita teres 3 lotes
     // separados no mesmo dia para o mesmo produto.
     const { data: lotesExistentes } = await supabaseClient
         .from("lotes_producao")
-        .select("lote_id, numero_lote, quantidade_produzida")
+        .select("lote_id, numero_lote, quantidade_produzida, quebras")
         .eq("artigo_id", artigoId)
         .eq("data_producao", dataProducao);
 
@@ -497,33 +584,46 @@ document.getElementById("btnRegistarProducao").addEventListener("click", async (
     if (loteAlvo) {
         const { error } = await supabaseClient
             .from("lotes_producao")
-            .update({ quantidade_produzida: Number(loteAlvo.quantidade_produzida) + quantidade })
+            .update({
+                quantidade_produzida: Number(loteAlvo.quantidade_produzida) + quantidade,
+                quebras: Number(loteAlvo.quebras || 0) + quebras,
+                motivo_quebra: motivoQuebra || null,
+            })
             .eq("lote_id", loteAlvo.lote_id);
         if (error) { erroEl.textContent = "Erro ao somar ao lote: " + traduzirErro(error.message); return; }
         toast(`Somado ao lote ${loteAlvo.numero_lote}.`, "sucesso");
     } else {
-        const { error } = await supabaseClient
-            .from("lotes_producao")
-            .insert({
-                produto: artigo?.designacao ?? "",
-                artigo_id: artigoId,
-                numero_lote: numeroLote,
-                categoria,
-                data_producao: dataProducao,
-                validade,
-                quantidade_produzida: quantidade,
-            });
+        const registo = {
+            produto: artigo?.designacao ?? "",
+            artigo_id: artigoId,
+            numero_lote: numeroLote,
+            data_producao: dataProducao,
+            validade,
+            quantidade_produzida: quantidade,
+            quebras,
+            motivo_quebra: motivoQuebra || null,
+        };
+        if (tipoProdutoActual === "pa") {
+            registo.categoria = document.getElementById("pdCategoria").value;
+        }
+        const { error } = await supabaseClient.from("lotes_producao").insert(registo);
         if (error) { erroEl.textContent = "Erro ao criar lote: " + traduzirErro(error.message); return; }
         toast(`Lote ${numeroLote} criado.`, "sucesso");
     }
 
     document.getElementById("pdQuantidade").value = "";
+    document.getElementById("pdQuebras").value = "0";
+    document.getElementById("pdMotivoQuebra").value = "";
+    document.getElementById("pdMotivoQuebra").style.display = "none";
     document.getElementById("pdNumeroProducao").value = "";
     document.getElementById("pdValidade").value = "";
     delete document.getElementById("pdValidade").dataset.editadoManualmente;
     document.getElementById("pdArtigoTexto").value = "";
     document.getElementById("pdArtigo").value = "";
     document.getElementById("pdLotePreview").textContent = "—";
+    tipoProdutoActual = "pa";
+    document.getElementById("pdCategoria").style.display = "block";
+    document.getElementById("linhaNumeroProducao").style.display = "grid";
 });
 
 // --- Plano de produção e matérias-primas necessárias -----------------------
