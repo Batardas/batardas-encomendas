@@ -50,7 +50,11 @@
     <div class="cartao">
         <h2>Nova encomenda</h2>
         <div class="linha-form">
-            <input id="fCliente" placeholder="Nome do cliente">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="fClienteTexto" placeholder="Nome do cliente (existente ou novo)..." autocomplete="off">
+                <input type="hidden" id="fCliente">
+                <div id="fClienteResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
             <select id="fCanal">
                 <option value="Telefone">Telefone</option>
                 <option value="Email">Email</option>
@@ -636,6 +640,7 @@ function obterSemanaAtual() {
 
 async function activarPesquisasDeArtigo() {
     await activarPesquisaArtigo("fProdutoTexto", "fProduto", "fProdutoResultados");
+    await activarPesquisaCliente("fClienteTexto", "fCliente", "fClienteResultados");
     await activarPesquisaArtigo("pExtraArtigoTexto", "pExtraArtigo", "pExtraArtigoResultados");
     await activarPesquisaArtigo("lProdutoArtigoTexto", "lProdutoArtigo", "lProdutoArtigoResultados");
     await activarPesquisaArtigo("cArtigoTexto", "cArtigo", "cArtigoResultados");
@@ -1223,7 +1228,8 @@ document.getElementById("btnRegistar").addEventListener("click", async () => {
     const erroEl = document.getElementById("erroRegisto");
     erroEl.textContent = "";
 
-    const nomeCliente = document.getElementById("fCliente").value.trim();
+    const clienteIdSeleccionado = document.getElementById("fCliente").value;
+    const nomeCliente = document.getElementById("fClienteTexto").value.trim();
     const canal = document.getElementById("fCanal").value;
     const artigoId = document.getElementById("fProduto").value;
     const artigo = artigoId ? await obterArtigoPorId(artigoId) : null;
@@ -1236,18 +1242,21 @@ document.getElementById("btnRegistar").addEventListener("click", async () => {
         return;
     }
 
-    // Procura cliente existente pelo nome; cria se não existir.
-    // Simplificação intencional para o volume actual (<10 encomendas/semana) —
-    // se o volume crescer, vale a pena um combobox com pesquisa em vez disto.
-    let { data: clienteExistente } = await supabaseClient
-        .from("clientes").select("cliente_id").eq("nome", nomeCliente).maybeSingle();
-
-    let clienteId = clienteExistente?.cliente_id;
+    // Se escolheste um cliente existente na pesquisa, usa-se logo o id —
+    // só se procura/cria pelo nome quando escreveste algo que não estava
+    // na lista (cliente novo).
+    let clienteId = clienteIdSeleccionado || null;
     if (!clienteId) {
-        const { data: novoCliente, error: erroCliente } = await supabaseClient
-            .from("clientes").insert({ nome: nomeCliente }).select().single();
-        if (erroCliente) { erroEl.textContent = "Erro ao criar cliente: " + erroCliente.message; return; }
-        clienteId = novoCliente.cliente_id;
+        const { data: clienteExistente } = await supabaseClient
+            .from("clientes").select("cliente_id").eq("nome", nomeCliente).maybeSingle();
+        clienteId = clienteExistente?.cliente_id;
+        if (!clienteId) {
+            const { data: novoCliente, error: erroCliente } = await supabaseClient
+                .from("clientes").insert({ nome: nomeCliente }).select().single();
+            if (erroCliente) { erroEl.textContent = "Erro ao criar cliente: " + erroCliente.message; return; }
+            clienteId = novoCliente.cliente_id;
+            _cacheClientes = null; // refresca a pesquisa de cliente com o novo
+        }
     }
 
     const { data: novaEncomenda, error: erroEncomenda } = await supabaseClient
@@ -1267,7 +1276,9 @@ document.getElementById("btnRegistar").addEventListener("click", async () => {
         });
     if (erroLinha) { erroEl.textContent = "Encomenda criada, mas falhou a linha: " + erroLinha.message; return; }
 
-    ["fCliente", "fQuantidade", "fDataEntrega"].forEach((id) => document.getElementById(id).value = "");
+    ["fQuantidade", "fDataEntrega"].forEach((id) => document.getElementById(id).value = "");
+    document.getElementById("fClienteTexto").value = "";
+    document.getElementById("fCliente").value = "";
     document.getElementById("fProdutoTexto").value = "";
     document.getElementById("fProduto").value = "";
     carregar();
@@ -2164,6 +2175,7 @@ document.getElementById("btnImportarClientes").addEventListener("click", async (
         ${erros.length ? `<p style="color:var(--perigo); margin-top:8px;">${erros.length} erro(s):<br>${erros.map(escaparHtml).join("<br>")}</p>` : ""}
     `;
     document.getElementById("impClientesFicheiro").value = "";
+    _cacheClientes = null; // refresca a pesquisa de cliente com os novos
 });
 
 document.getElementById("btnImportarPrecos").addEventListener("click", async () => {
