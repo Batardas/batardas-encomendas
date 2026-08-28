@@ -15,6 +15,7 @@
 <div class="layout-admin">
 <nav class="barra-lateral">
     <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button id="botaoMenuMobile" onclick="alternarMenuMobile()" aria-label="Menu"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
     <button class="nav-item activo" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
     <button class="nav-item" data-secao="producao"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i> Produção diária</button>
     <button class="nav-item" data-secao="plano"><i class="ti ti-calendar-week" aria-hidden="true"></i> Plano de produção</button>
@@ -44,6 +45,7 @@
         <button data-estado="Em Produção">Em Produção</button>
         <button data-estado="Em Preparação">Em Preparação</button>
         <button data-estado="Pronta">Prontas</button>
+        <button data-estado="Embalada">Embaladas</button>
         <button data-estado="Carregada">Carregadas</button>
     </div>
 
@@ -112,7 +114,7 @@
         </div>
         <button id="btnAdicionarPlano">Adicionar ao plano</button>
         <table style="margin-top:16px;">
-            <thead><tr><th>Produto</th><th>Quantidade</th><th></th></tr></thead>
+            <thead><tr><th>Produto</th><th>Quantidade</th><th>PA — lote atribuído</th><th></th></tr></thead>
             <tbody id="corpoPlanoProducao"></tbody>
         </table>
     </div>
@@ -166,7 +168,14 @@
                 <option value="Saída">Saída</option>
                 <option value="Transferência">Transferência</option>
             </select>
-            <select id="mLoteOrigem"></select>
+        </div>
+        <div class="linha-form">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="mArtigoTexto" placeholder="Pesquisar artigo (código ou nome)..." autocomplete="off">
+                <input type="hidden" id="mArtigo">
+                <div id="mArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="mLoteOrigem" disabled><option value="">Escolhe o artigo primeiro</option></select>
         </div>
         <div class="linha-form">
             <select id="mUnidade">
@@ -178,7 +187,14 @@
             <input id="mQuantidade" type="number" min="0.01" step="0.01" placeholder="Quantidade">
         </div>
         <div class="linha-form" id="linhaDestino" style="display:none;">
-            <select id="mLoteDestino"></select>
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="mArtigoTextoDestino" placeholder="Artigo de destino (pesquisar)..." autocomplete="off">
+                <input type="hidden" id="mArtigoDestino">
+                <div id="mArtigoDestinoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+            <select id="mLoteDestino" disabled><option value="">Escolhe o artigo primeiro</option></select>
+        </div>
+        <div class="linha-form" id="linhaQuantidadeDestino" style="display:none;">
             <input id="mQuantidadeDestino" type="number" min="0" step="0.01" placeholder="Quantidade no destino (se diferente)">
         </div>
         <div class="linha-form" id="linhaLocalizacoes" style="display:none;">
@@ -199,6 +215,7 @@
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
         </p>
+        <div class="filtros" id="filtrosMinhasNc" style="display:none;"></div>
         <div id="corpoMinhasNc"></div>
     </div>
 </section>
@@ -220,8 +237,9 @@ async function iniciar() {
     await activarPesquisaArtigo("fArtigoTexto", "fArtigo", "fArtigoResultados");
     await activarPesquisaArtigo("pdArtigoTexto", "pdArtigo", "pdArtigoResultados", carregarTipoProdutoSeleccionado);
     await activarPesquisaArtigo("ppArtigoTexto", "ppArtigo", "ppArtigoResultados");
+    await activarPesquisaArtigo("mArtigoTexto", "mArtigo", "mArtigoResultados", (artigoId) => carregarLotesDoArtigo(artigoId, "mLoteOrigem"));
+    await activarPesquisaArtigo("mArtigoTextoDestino", "mArtigoDestino", "mArtigoDestinoResultados", (artigoId) => carregarLotesDoArtigo(artigoId, "mLoteDestino"));
     await carregarPedidos();
-    await carregarLotesArtigo();
     await carregarZonas();
     await carregarPlanoDoDia();
 
@@ -239,19 +257,25 @@ async function iniciar() {
     carregarMinhasNcPartilhado(contexto.session.user.id);
 }
 
-async function carregarLotesArtigo() {
+async function carregarLotesDoArtigo(artigoId, idSelect) {
+    const select = document.getElementById(idSelect);
+    if (!artigoId) {
+        select.disabled = true;
+        select.innerHTML = `<option value="">Escolhe o artigo primeiro</option>`;
+        return;
+    }
     const { data, error } = await supabaseClient
         .from("lotes_artigo")
-        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(designacao, unidade)")
+        .select("lote_artigo_id, numero_lote, quantidade_atual, artigos(unidade)")
+        .eq("artigo_id", artigoId)
         .order("numero_lote");
     if (error) { console.error(error); return; }
 
-    const opcoes = data.length
-        ? data.map((l) => `<option value="${l.lote_artigo_id}" data-unidade="${escaparHtml((l.artigos?.unidade || "un").toUpperCase())}">${escaparHtml(l.artigos?.designacao ?? "—")} · lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
-        : `<option value="">Sem lotes carregados ainda</option>`;
-    document.getElementById("mLoteOrigem").innerHTML = opcoes;
-    document.getElementById("mLoteDestino").innerHTML = opcoes;
-    actualizarRotuloUnidade();
+    select.disabled = false;
+    select.innerHTML = data.length
+        ? data.map((l) => `<option value="${l.lote_artigo_id}" data-unidade="${escaparHtml((l.artigos?.unidade || "un").toUpperCase())}">Lote ${escaparHtml(l.numero_lote)} (${l.quantidade_atual})</option>`).join("")
+        : `<option value="">Sem lotes deste artigo em stock</option>`;
+    if (idSelect === "mLoteOrigem") actualizarRotuloUnidade();
 }
 
 function actualizarRotuloUnidade() {
@@ -273,6 +297,7 @@ async function carregarZonas() {
 document.getElementById("mTipo").addEventListener("change", (e) => {
     const ehTransferencia = e.target.value === "Transferência";
     document.getElementById("linhaDestino").style.display = ehTransferencia ? "grid" : "none";
+    document.getElementById("linhaQuantidadeDestino").style.display = ehTransferencia ? "grid" : "none";
     document.getElementById("linhaLocalizacoes").style.display = ehTransferencia ? "grid" : "none";
 });
 
@@ -287,7 +312,7 @@ document.getElementById("btnMovimento").addEventListener("click", async () => {
     const observacoes = document.getElementById("mObservacoes").value.trim();
 
     if (!loteOrigem || !quantidade) {
-        erroEl.textContent = "Escolhe o lote e a quantidade.";
+        erroEl.textContent = "Escolhe o artigo, o lote e a quantidade.";
         return;
     }
 
@@ -305,7 +330,7 @@ document.getElementById("btnMovimento").addEventListener("click", async () => {
         const localizacaoOrigem = document.getElementById("mLocalizacaoOrigem").value;
         const localizacaoDestino = document.getElementById("mLocalizacaoDestino").value;
         if (!loteDestino) {
-            erroEl.textContent = "Escolhe o lote de destino para a transferência.";
+            erroEl.textContent = "Escolhe o artigo e o lote de destino para a transferência.";
             return;
         }
         registo.lote_artigo_destino_id = loteDestino;
@@ -319,8 +344,10 @@ document.getElementById("btnMovimento").addEventListener("click", async () => {
 
     document.getElementById("mQuantidade").value = "";
     document.getElementById("mObservacoes").value = "";
-    carregarLotesArtigo();
-    toast("Movimento registado — o Francisco foi avisado.", "sucesso");
+    document.getElementById("mArtigoTexto").value = "";
+    document.getElementById("mArtigo").value = "";
+    carregarLotesDoArtigo(null, "mLoteOrigem");
+    toast("Movimento registado — o admin foi avisado.", "sucesso");
 });
 
 async function carregarPedidos() {
@@ -495,6 +522,9 @@ async function carregarTipoProdutoSeleccionado(artigoId) {
     if (tipoProdutoActual === "materia_prima") {
         erroEl.textContent = "Este artigo é uma matéria-prima — não é produzido aqui, entra por compra/importação.";
     }
+    if (tipoProdutoActual === "pa") {
+        erroEl.textContent = "Produto acabado — só o admin cria estes lotes. No separador \"Plano de produção\", atribui um lote já existente a este item.";
+    }
 
     const ehIntermedio = tipoProdutoActual === "intermedio";
     document.getElementById("pdCategoria").style.display = ehIntermedio ? "none" : "block";
@@ -556,6 +586,7 @@ document.getElementById("btnRegistarProducao").addEventListener("click", async (
 
     if (!artigoId || !quantidade) { erroEl.textContent = "Preenche produto e quantidade."; return; }
     if (tipoProdutoActual === "materia_prima") { erroEl.textContent = "Matérias-primas não se registam aqui — entram por compra/importação."; return; }
+    if (tipoProdutoActual === "pa") { erroEl.textContent = "Produto acabado — só o admin cria estes lotes. Vai a \"Plano de produção\" para atribuíres um lote já existente."; return; }
     if (quebras > 0 && !motivoQuebra) { erroEl.textContent = "Escreve o motivo da quebra."; return; }
 
     const artigo = await obterArtigoPorId(artigoId);
@@ -654,7 +685,7 @@ async function carregarPlanoDoDia() {
     const dataPlano = document.getElementById("ppData").value;
     const { data, error } = await supabaseClient
         .from("plano_producao")
-        .select("id, artigo_id, quantidade, artigos(designacao)")
+        .select("id, artigo_id, quantidade, lote_atribuido_id, artigos(designacao, tipo_produto)")
         .eq("data_planeada", dataPlano)
         .order("criado_em", { ascending: true });
     if (error) { console.error(error); return; }
@@ -663,19 +694,44 @@ async function carregarPlanoDoDia() {
 
     const corpo = document.getElementById("corpoPlanoProducao");
     corpo.innerHTML = data.length ? "" :
-        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Ainda não adicionaste nada ao plano deste dia.</td></tr>`;
-    data.forEach((l) => {
+        `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Ainda não adicionaste nada ao plano deste dia.</td></tr>`;
+    for (const l of data) {
         const tr = document.createElement("tr");
+        const ehPa = l.artigos?.tipo_produto === "pa";
+        let celulaAtribuicao = "—";
+        if (ehPa) {
+            const { data: lotesDisponiveis } = await supabaseClient
+                .from("lotes_producao")
+                .select("lote_id, numero_lote, quantidade_produzida")
+                .eq("artigo_id", l.artigo_id)
+                .gt("quantidade_produzida", 0)
+                .order("data_producao", { ascending: true });
+            const opcoes = (lotesDisponiveis ?? []).map((lp) =>
+                `<option value="${lp.lote_id}" ${lp.lote_id === l.lote_atribuido_id ? "selected" : ""}>${escaparHtml(lp.numero_lote)} (${lp.quantidade_produzida})</option>`
+            ).join("");
+            celulaAtribuicao = `<select data-plano-id="${l.id}" class="atribuir-lote-pa" style="width:auto;"><option value="">— sem lote atribuído —</option>${opcoes}</select>`;
+        }
         tr.innerHTML = `
             <td data-rotulo="Produto">${escaparHtml(l.artigos?.designacao ?? "—")}</td>
             <td data-rotulo="Quantidade">${l.quantidade}</td>
+            <td data-rotulo="PA — lote atribuído">${celulaAtribuicao}</td>
             <td data-rotulo=""><button class="secundario" data-id="${l.id}" style="padding:4px 10px; font-size:12px;">Remover</button></td>
         `;
+        const selectAtribuicao = tr.querySelector(".atribuir-lote-pa");
+        if (selectAtribuicao) {
+            selectAtribuicao.addEventListener("change", (e) => atribuirLotePa(l.id, e.target.value || null));
+        }
         tr.querySelector("button").addEventListener("click", () => removerDoPlano(l.id));
         corpo.appendChild(tr);
-    });
+    }
 
     await recalcularNecessidades();
+}
+
+async function atribuirLotePa(planoId, loteId) {
+    const { error } = await supabaseClient.from("plano_producao").update({ lote_atribuido_id: loteId }).eq("id", planoId);
+    if (error) { toast("Erro ao atribuir: " + traduzirErro(error.message), "erro"); return; }
+    toast(loteId ? "Lote atribuído." : "Atribuição removida.", "sucesso");
 }
 
 async function removerDoPlano(id) {

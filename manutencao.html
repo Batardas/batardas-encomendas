@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manutenção — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout-admin">
+<nav class="barra-lateral">
+    <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button id="botaoMenuMobile" onclick="alternarMenuMobile()" aria-label="Menu"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
+    <button class="nav-item activo" data-secao="pedidos"><i class="ti ti-tool" aria-hidden="true"></i> Pedidos</button>
+    <button class="nav-item" data-secao="equipamentos"><i class="ti ti-settings" aria-hidden="true"></i> Equipamentos</button>
+    <button class="nav-item" data-secao="preventiva"><i class="ti ti-calendar-time" aria-hidden="true"></i> Preventiva</button>
+    <button class="nav-item" data-secao="qualidade"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</button>
+</nav>
+
+<div class="conteudo-admin">
+<header>
+    <h1 id="tituloSecao">Pedidos</h1>
+    <div>
+        <span class="utilizador" id="nomeUtilizador"></span>
+        <span class="bloco-sino">
+            <button id="botaoSino" onclick="alternarPainelAlertas()" aria-label="Notificações"><i class="ti ti-bell" style="font-size:19px; vertical-align:-4px;" aria-hidden="true"></i><span id="badgeAlertasSino"></span></button>
+            <div id="painelAlertas"></div>
+        </span>
+        <button class="secundario" onclick="terminarSessao()">Sair</button>
+    </div>
+</header>
+
+<main>
+<section class="painel activo" data-secao="pedidos">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Pendentes</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiPendentes">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Aguarda peças</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiAguardaPecas">—</p>
+        </div>
+        <div class="cartao" style="margin-bottom:0; padding:16px;">
+            <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Em curso</p>
+            <p style="font-size:26px; font-weight:600; margin:0;" id="kpiEmCurso">—</p>
+        </div>
+    </div>
+
+    <div class="cartao">
+        <h2>Reportar avaria ou pedido de obra</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Qualquer pessoa pode reportar — só quem estiver na Manutenção é que assume/fecha.
+        </p>
+        <div class="linha-form">
+            <select id="pmEquipamento"><option value="">Equipamento (opcional)</option></select>
+            <select id="pmUrgencia">
+                <option value="Baixa">Baixa</option>
+                <option value="Média" selected>Média</option>
+                <option value="Alta">Alta</option>
+                <option value="Crítica">Crítica</option>
+            </select>
+        </div>
+        <textarea id="pmDescricao" placeholder="O que se passa?" rows="2" style="width:100%; font-family:inherit; font-size:14px; padding:10px; border-radius:8px; border:1px solid var(--linha); margin-top:10px;"></textarea>
+        <button id="btnReportarPedido" style="margin-top:10px;">Reportar</button>
+        <p id="erroReportar" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Todos os pedidos</h2>
+        <div class="filtros" id="filtrosManutencao">
+            <button data-estado="todos" class="filtro-activo">Todos</button>
+            <button data-estado="Pendente">Pendente</button>
+            <button data-estado="Aguarda peças">Aguarda peças</button>
+            <button data-estado="Em curso">Em curso</button>
+            <button data-estado="Concluído">Concluído</button>
+        </div>
+        <div id="listaPedidosManutencao"></div>
+    </div>
+</section>
+
+<section class="painel" data-secao="equipamentos">
+    <div class="cartao">
+        <h2>Equipamentos</h2>
+        <div class="linha-form">
+            <input id="eqNome" placeholder="Nome do equipamento (ex. Forno 2, Câmara Fria)">
+            <select id="eqZona"><option value="">Zona (opcional)</option></select>
+        </div>
+        <button id="btnCriarEquipamento">Criar equipamento</button>
+        <p id="erroEquipamento" class="erro"></p>
+        <table style="margin-top:16px;">
+            <thead><tr><th>Nome</th><th>Zona</th></tr></thead>
+            <tbody id="corpoEquipamentos"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="painel" data-secao="preventiva">
+    <div class="cartao">
+        <h2>Manutenção preventiva</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Define a periodicidade por equipamento — a coluna "Próxima" avisa-te quando está a vencer.
+        </p>
+        <div class="linha-form">
+            <select id="mpEquipamento"><option value="">Escolhe o equipamento...</option></select>
+            <input id="mpPeriodicidade" type="number" min="1" placeholder="A cada quantos dias">
+        </div>
+        <div class="linha-form">
+            <input id="mpUltimaRealizada" type="date">
+            <input id="mpObservacoes" placeholder="Observações (opcional)">
+        </div>
+        <button id="btnCriarPreventiva">Guardar</button>
+        <p id="erroPreventiva" class="erro"></p>
+        <table style="margin-top:16px;">
+            <thead><tr><th>Equipamento</th><th>Periodicidade</th><th>Última</th><th>Próxima</th></tr></thead>
+            <tbody id="corpoPreventiva"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="painel" data-secao="qualidade">
+    <div class="cartao" id="cartaoMinhasNc">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
+        </p>
+        <div class="filtros" id="filtrosMinhasNc" style="display:none;"></div>
+        <div id="corpoMinhasNc"></div>
+    </div>
+</section>
+</main>
+</div>
+</div>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+let filtroManutencaoActual = "todos";
+let todosPedidosManutencao = [];
+
+async function iniciar() {
+    const contexto = await exigirRole(["manutencao", "admin"]);
+    if (!contexto) return;
+    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
+    await inicializarAlertas();
+
+    await carregarZonasManutencao();
+    await carregarEquipamentosParaSelect();
+    await carregarPedidosManutencao();
+    await carregarEquipamentos();
+    await carregarPreventiva();
+    carregarMinhasNcPartilhado(contexto.session.user.id);
+
+    // Só quem tem a etiqueta "manutencao" (ou é admin) vê os botões de
+    // assumir/fechar — os outros com acesso ao ecrã só veem o estado.
+    window._podeGerirManutencao = contexto.perfil.role === "admin" || contexto.perfil.etiquetas?.includes("manutencao");
+}
+
+async function carregarZonasManutencao() {
+    const { data } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    const opcoes = `<option value="">Zona (opcional)</option>` + (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+    document.getElementById("eqZona").innerHTML = opcoes;
+}
+
+async function carregarEquipamentosParaSelect() {
+    const { data } = await supabaseClient.from("equipamentos").select("id, nome").order("nome");
+    const opcoes = (data ?? []).map((e) => `<option value="${e.id}">${escaparHtml(e.nome)}</option>`).join("");
+    document.getElementById("pmEquipamento").innerHTML = `<option value="">Equipamento (opcional)</option>` + opcoes;
+    document.getElementById("mpEquipamento").innerHTML = `<option value="">Escolhe o equipamento...</option>` + opcoes;
+}
+
+// --- Reportar + listar pedidos ---------------------------------------------
+document.getElementById("btnReportarPedido").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroReportar");
+    erroEl.textContent = "";
+    const equipamentoId = document.getElementById("pmEquipamento").value || null;
+    const urgencia = document.getElementById("pmUrgencia").value;
+    const descricao = document.getElementById("pmDescricao").value.trim();
+    if (!descricao) { erroEl.textContent = "Escreve o que se passa."; return; }
+
+    const { error } = await supabaseClient.from("pedidos_manutencao").insert({ equipamento_id: equipamentoId, urgencia, descricao });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+
+    toast("Pedido reportado — a Manutenção foi avisada.", "sucesso");
+    document.getElementById("pmDescricao").value = "";
+    document.getElementById("pmEquipamento").value = "";
+    carregarPedidosManutencao();
+});
+
+document.getElementById("filtrosManutencao").querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        document.querySelector("#filtrosManutencao .filtro-activo")?.classList.remove("filtro-activo");
+        btn.classList.add("filtro-activo");
+        filtroManutencaoActual = btn.dataset.estado;
+        renderizarPedidosManutencao();
+    });
+});
+
+async function carregarPedidosManutencao() {
+    const { data, error } = await supabaseClient
+        .from("pedidos_manutencao")
+        .select("id, descricao, urgencia, estado, tecnico_externo, nome_tecnico, criado_em, equipamentos(nome), reportado:perfis!pedidos_manutencao_reportado_por_fkey(nome), assumido:perfis!pedidos_manutencao_assumido_por_fkey(nome)")
+        .order("criado_em", { ascending: false });
+    if (error) { console.error(error); return; }
+    todosPedidosManutencao = data ?? [];
+
+    document.getElementById("kpiPendentes").textContent = todosPedidosManutencao.filter((p) => p.estado === "Pendente").length;
+    document.getElementById("kpiAguardaPecas").textContent = todosPedidosManutencao.filter((p) => p.estado === "Aguarda peças").length;
+    document.getElementById("kpiEmCurso").textContent = todosPedidosManutencao.filter((p) => p.estado === "Em curso").length;
+
+    renderizarPedidosManutencao();
+}
+
+function renderizarPedidosManutencao() {
+    const lista = filtroManutencaoActual === "todos" ? todosPedidosManutencao : todosPedidosManutencao.filter((p) => p.estado === filtroManutencaoActual);
+    const container = document.getElementById("listaPedidosManutencao");
+    container.innerHTML = lista.length ? "" : `<p style="font-size:13px; color:var(--ink-suave);">Sem pedidos neste filtro.</p>`;
+
+    lista.forEach((p) => {
+        const div = document.createElement("div");
+        div.style.cssText = "border:1px solid var(--linha); border-radius:var(--raio-peq); padding:14px; margin-bottom:12px;";
+        const podeGerir = window._podeGerirManutencao;
+        let acoes = "";
+        if (podeGerir && p.estado !== "Concluído") {
+            acoes = `
+                <select data-id="${p.id}" class="mudar-estado-manutencao" style="width:auto;">
+                    <option value="Pendente" ${p.estado === "Pendente" ? "selected" : ""}>Pendente</option>
+                    <option value="Aguarda peças" ${p.estado === "Aguarda peças" ? "selected" : ""}>Aguarda peças</option>
+                    <option value="Em curso" ${p.estado === "Em curso" ? "selected" : ""}>Em curso</option>
+                    <option value="Concluído" ${p.estado === "Concluído" ? "selected" : ""}>Concluído</option>
+                </select>
+            `;
+        }
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                <div>
+                    <strong>${escaparHtml(p.descricao)}</strong>
+                    <p style="font-size:12px; color:var(--ink-suave); margin:2px 0 0;">
+                        ${p.equipamentos?.nome ? escaparHtml(p.equipamentos.nome) + " · " : ""}Urgência: ${escaparHtml(p.urgencia)} · ${escaparHtml(p.estado)}
+                        ${p.reportado?.nome ? " · Reportado por " + escaparHtml(p.reportado.nome) : ""}
+                        ${p.assumido?.nome ? " · Assumido por " + escaparHtml(p.assumido.nome) : ""}
+                    </p>
+                </div>
+                <div>${acoes}</div>
+            </div>
+        `;
+        const select = div.querySelector(".mudar-estado-manutencao");
+        if (select) select.addEventListener("change", (e) => mudarEstadoPedidoManutencao(p.id, e.target.value));
+        container.appendChild(div);
+    });
+}
+
+async function mudarEstadoPedidoManutencao(pedidoId, novoEstado) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const registo = { estado: novoEstado, assumido_por: session.user.id };
+    if (novoEstado === "Concluído") registo.concluido_em = new Date().toISOString();
+
+    const { error } = await supabaseClient.from("pedidos_manutencao").update(registo).eq("id", pedidoId);
+    if (error) { toast("Erro: " + traduzirErro(error.message), "erro"); return; }
+    toast("Estado actualizado.", "sucesso");
+    carregarPedidosManutencao();
+}
+
+// --- Equipamentos ------------------------------------------------------
+document.getElementById("btnCriarEquipamento").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroEquipamento");
+    erroEl.textContent = "";
+    const nome = document.getElementById("eqNome").value.trim();
+    const zonaId = document.getElementById("eqZona").value || null;
+    if (!nome) { erroEl.textContent = "Escreve o nome do equipamento."; return; }
+
+    const { error } = await supabaseClient.from("equipamentos").insert({ nome, localizacao_id: zonaId });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+
+    toast("Equipamento criado.", "sucesso");
+    document.getElementById("eqNome").value = "";
+    carregarEquipamentos();
+    carregarEquipamentosParaSelect();
+});
+
+async function carregarEquipamentos() {
+    const { data, error } = await supabaseClient.from("equipamentos").select("nome, localizacoes(nome)").order("nome");
+    if (error) { console.error(error); return; }
+    const corpo = document.getElementById("corpoEquipamentos");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="2" style="text-align:center; color:var(--ink-suave);">Sem equipamentos ainda.</td></tr>`;
+    data.forEach((e) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td data-rotulo="Nome">${escaparHtml(e.nome)}</td><td data-rotulo="Zona">${escaparHtml(e.localizacoes?.nome ?? "—")}</td>`;
+        corpo.appendChild(tr);
+    });
+}
+
+// --- Preventiva ----------------------------------------------------------
+document.getElementById("btnCriarPreventiva").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroPreventiva");
+    erroEl.textContent = "";
+    const equipamentoId = document.getElementById("mpEquipamento").value;
+    const periodicidade = Number(document.getElementById("mpPeriodicidade").value);
+    const ultimaRealizada = document.getElementById("mpUltimaRealizada").value || null;
+    const observacoes = document.getElementById("mpObservacoes").value.trim() || null;
+
+    if (!equipamentoId || !periodicidade) { erroEl.textContent = "Escolhe o equipamento e a periodicidade."; return; }
+
+    const { error } = await supabaseClient.from("manutencao_preventiva").insert({
+        equipamento_id: equipamentoId, periodicidade_dias: periodicidade, ultima_realizada_em: ultimaRealizada, observacoes,
+    });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+
+    toast("Preventiva guardada.", "sucesso");
+    document.getElementById("mpPeriodicidade").value = "";
+    document.getElementById("mpUltimaRealizada").value = "";
+    document.getElementById("mpObservacoes").value = "";
+    carregarPreventiva();
+});
+
+async function carregarPreventiva() {
+    const { data, error } = await supabaseClient
+        .from("manutencao_preventiva")
+        .select("periodicidade_dias, ultima_realizada_em, equipamentos(nome)")
+        .order("ultima_realizada_em", { ascending: true, nullsFirst: true });
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoPreventiva");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem preventivas definidas ainda.</td></tr>`;
+    const hoje = new Date();
+    data.forEach((mp) => {
+        let proximaTexto = "—", corProxima = "inherit";
+        if (mp.ultima_realizada_em) {
+            const proxima = new Date(mp.ultima_realizada_em);
+            proxima.setDate(proxima.getDate() + mp.periodicidade_dias);
+            proximaTexto = formatarData(proxima.toISOString().slice(0, 10));
+            if (proxima <= hoje) corProxima = "var(--perigo)";
+        }
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Equipamento">${escaparHtml(mp.equipamentos?.nome ?? "—")}</td>
+            <td data-rotulo="Periodicidade">${mp.periodicidade_dias} dias</td>
+            <td data-rotulo="Última">${mp.ultima_realizada_em ? formatarData(mp.ultima_realizada_em) : "nunca"}</td>
+            <td data-rotulo="Próxima" style="color:${corProxima}; font-weight:${corProxima !== "inherit" ? "600" : "400"};">${proximaTexto}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+const TITULOS_SECAO = { pedidos: "Pedidos", equipamentos: "Equipamentos", preventiva: "Preventiva", qualidade: "Qualidade" };
+
+function mudarSecao(secao) {
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
+    document.querySelectorAll(".painel").forEach((p) => p.classList.toggle("activo", p.dataset.secao === secao));
+    document.getElementById("tituloSecao").textContent = TITULOS_SECAO[secao] ?? "Pedidos";
+    localStorage.setItem("batardas_secao_manutencao", secao);
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
+});
+mudarSecao(localStorage.getItem("batardas_secao_manutencao") ?? "pedidos");
+
+iniciar();
+</script>
+</body>
+</html>

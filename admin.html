@@ -17,6 +17,7 @@
 <div class="layout-admin">
 <nav class="barra-lateral">
     <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button id="botaoMenuMobile" onclick="alternarMenuMobile()" aria-label="Menu"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
     <button class="nav-item activo" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
     <button class="nav-item" data-secao="artigos"><i class="ti ti-list-search" aria-hidden="true"></i> Artigos</button>
     <button class="nav-item" data-secao="producao"><i class="ti ti-stack-2" aria-hidden="true"></i> Produção &amp; Lotes</button>
@@ -26,15 +27,16 @@
     <button class="nav-item" data-secao="relatorios"><i class="ti ti-file-download" aria-hidden="true"></i> Relatórios</button>
     <button class="nav-item" data-secao="utilizadores"><i class="ti ti-users" aria-hidden="true"></i> Utilizadores</button>
     <button class="nav-item" data-secao="financeiro"><i class="ti ti-chart-line" aria-hidden="true"></i> Preços &amp; Custos</button>
-    <button class="nav-item" data-secao="importar"><i class="ti ti-upload" aria-hidden="true"></i> Importações</button>
+    <button class="nav-item" data-secao="importar" id="navImportar" style="display:none;"><i class="ti ti-upload" aria-hidden="true"></i> Importações</button>
     <button class="nav-item" data-secao="qualidade"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</button>
 
-    <div style="margin-top:auto; padding:16px 20px 4px; border-top:1px solid var(--linha);">
+    <div class="rodape-lateral">
         <p style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-fraca); margin:12px 0 8px;">Ver como</p>
         <a href="producao.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-tools-kitchen-2" aria-hidden="true"></i> Produção</a>
         <a href="armazem.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-package" aria-hidden="true"></i> Armazém</a>
         <a href="consulta.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-eye" aria-hidden="true"></i> Consulta</a>
         <a href="qualidade.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</a>
+        <a href="manutencao.html" style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-suave); text-decoration:none; padding:6px 0;"><i class="ti ti-tool" aria-hidden="true"></i> Manutenção</a>
     </div>
 </nav>
 
@@ -93,7 +95,7 @@
     </div>
 
     <div class="cartao">
-        <h2>Prontas para carregar</h2>
+        <h2>Embaladas — prontas para carregar</h2>
         <table>
             <thead><tr><th>Cliente</th><th>Entrega</th><th>Acção</th></tr></thead>
             <tbody id="corpoProntas"></tbody>
@@ -306,7 +308,7 @@
             <div class="linha-form" style="margin:0;">
                 <input id="rQuantidade" type="number" min="0" step="0.0001" placeholder="Quantidade total usada">
                 <select id="rUnidadeQtd" disabled>
-                    <option value="">Escolhe a matéria-prima primeiro</option>
+                    <option value="">Escolhe a unidade (matéria-prima primeiro)</option>
                 </select>
             </div>
         </div>
@@ -534,7 +536,7 @@
 </section>
 
 <section class="painel" data-secao="utilizadores">
-    <div class="cartao">
+    <div class="cartao" id="cartaoCriarUtilizador" style="display:none;">
         <h2>Utilizadores e acessos</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Cria contas e repõe passwords sem teres de entrar no painel do Supabase.
@@ -549,19 +551,26 @@
                 <option value="producao">Produção</option>
                 <option value="armazem">Armazém</option>
                 <option value="qualidade">Qualidade</option>
+                <option value="manutencao">Manutenção</option>
                 <option value="admin">Admin</option>
             </select>
             <button id="btnCriarUtilizador">Criar utilizador</button>
         </div>
         <p id="erroUtilizador" class="erro"></p>
+    </div>
 
+    <div class="cartao">
+        <h2>Utilizadores</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Repõe a password de quem ficar bloqueado, sem teres de entrar no painel do Supabase.
+        </p>
         <table style="margin-top:16px;">
             <thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Acção</th></tr></thead>
             <tbody id="corpoUtilizadores"></tbody>
         </table>
     </div>
 
-    <div class="cartao">
+    <div class="cartao" id="cartaoAcessosExtra" style="display:none;">
         <h2>Acessos extra e etiquetas de responsabilidade</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Acesso extra dá entrada noutro módulo inteiro (ex. alguém com perfil Consulta que também precisa de entrar em Qualidade). Etiqueta de responsabilidade não dá acesso a nada — só decide quem pode assumir/fechar pedidos numa área (ex. "manutencao").
@@ -726,6 +735,7 @@
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
         </p>
+        <div class="filtros" id="filtrosMinhasNc" style="display:none;"></div>
         <div id="corpoMinhasNc"></div>
     </div>
 </section>
@@ -742,6 +752,19 @@ async function iniciar() {
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
     renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
+
+    // Utilizadores e Importações ficam reservados ao super admin — o
+    // admin de gestão continua a ver e a fazer o resto do admin.html
+    // normalmente, só não gere acessos nem carrega ficheiros do
+    // Primavera.
+    if (contexto.perfil.super_admin) {
+        document.getElementById("navImportar").style.display = "flex";
+        document.getElementById("cartaoCriarUtilizador").style.display = "block";
+        document.getElementById("cartaoAcessosExtra").style.display = "block";
+        await carregarUtilizadoresParaAcessosExtra();
+        await carregarEtiquetasConhecidas();
+    }
+
     await carregar();
     carregarMinhasNcPartilhado(contexto.session.user.id);
     await carregarZonasParaInventario();
@@ -763,8 +786,6 @@ async function iniciar() {
     await carregarPlaneamentoSemanal();
     await carregarPlanoDoDiaAdmin();
     await carregarUtilizadores();
-    await carregarUtilizadoresParaAcessosExtra();
-    await carregarEtiquetasConhecidas();
     await carregarZonas();
     await carregarListaReceitas();
 
@@ -1394,13 +1415,13 @@ async function carregar() {
     const { data: prontas, error: erro1 } = await supabaseClient
         .from("encomendas")
         .select("encomenda_id, data_entrega_pretendida, clientes(nome)")
-        .eq("estado", "Pronta")
+        .eq("estado", "Embalada")
         .order("data_entrega_pretendida", { ascending: true });
 
     const corpoProntas = document.getElementById("corpoProntas");
     if (erro1) { console.error(erro1); return; }
     corpoProntas.innerHTML = prontas.length ? "" :
-        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Nada pronto para carregar.</td></tr>`;
+        `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Nada embalado à espera de carregamento.</td></tr>`;
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
     prontas.forEach((enc) => {
         const dataEntrega = new Date(enc.data_entrega_pretendida + "T00:00:00");
@@ -1521,7 +1542,8 @@ const RESPONSAVEL_POR_ESTADO = {
     "Registada": "Por planear",
     "Em Produção": "Produção",
     "Em Preparação": "Armazém — Preparação",
-    "Pronta": "Admin — Carregamento",
+    "Pronta": "Armazém — Embalamento",
+    "Embalada": "Admin — Carregamento",
     "Carregada": "Concluída",
 };
 
@@ -1702,7 +1724,7 @@ async function chamarGestaoUtilizadores(corpo) {
     }
 }
 
-const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém", consulta: "Consulta", qualidade: "Qualidade" };
+const NOME_ROLE = { admin: "Admin", producao: "Produção", armazem: "Armazém", consulta: "Consulta", qualidade: "Qualidade", manutencao: "Manutenção" };
 
 async function carregarUtilizadores() {
     const resultado = await chamarGestaoUtilizadores({ acao: "listar_utilizadores" });
@@ -2026,7 +2048,7 @@ async function carregarOpcoesUnidadeReceita(componenteId) {
     const avisoCustoExistente = document.getElementById("rCustoExistente");
     if (!componenteId) {
         select.disabled = true;
-        select.innerHTML = `<option value="">Escolhe a matéria-prima primeiro</option>`;
+        select.innerHTML = `<option value="">Escolhe a unidade (matéria-prima primeiro)</option>`;
         campoCusto.style.display = "none";
         avisoCustoExistente.style.display = "none";
         return;

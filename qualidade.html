@@ -89,6 +89,7 @@
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Quando resolveres, marca "Por confirmar" — a Qualidade recebe um alerta para validar e fechar. Anexa provas e soluções directamente aqui, incluindo a partir da câmara do telemóvel.
         </p>
+        <div class="filtros" id="filtrosMinhasNc" style="display:none;"></div>
         <div id="corpoMinhasNc"></div>
     </div>
 
@@ -100,7 +101,7 @@
     <div class="cartao">
         <h2>Auditorias recentes</h2>
         <table>
-            <thead><tr><th>Tipo</th><th>Data</th><th>Zona</th><th>Não-conformidades</th></tr></thead>
+            <thead><tr><th>Tipo</th><th>Data</th><th>Zona</th><th>Não-conformidades</th><th>Acção</th></tr></thead>
             <tbody id="corpoAuditorias"></tbody>
         </table>
     </div>
@@ -154,12 +155,12 @@ async function carregarZonasAuditoria() {
 async function carregarResponsaveis() {
     const { data } = await supabaseClient.from("perfis").select("id, nome").order("nome");
     const container = document.getElementById("listaResponsaveisNc");
-    container.innerHTML = (data ?? []).map((p) =>
-        `<button type="button" class="secundario" data-id="${p.id}">${escaparHtml(p.nome)}</button>`
-    ).join("");
-    container.querySelectorAll("button").forEach((btn) => {
-        btn.addEventListener("click", () => btn.classList.toggle("activo"));
-    });
+    container.innerHTML = (data ?? []).map((p) => `
+        <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid var(--linha); border-radius:999px; cursor:pointer; font-size:13px;">
+            <input type="checkbox" value="${p.id}" style="width:auto; margin:0;">
+            ${escaparHtml(p.nome)}
+        </label>
+    `).join("");
 }
 
 // --- Montar a lista de não-conformidades antes de gravar a auditoria ------
@@ -168,7 +169,7 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     const gravidade = document.getElementById("ncGravidade").value;
     const accaoCorrectiva = document.getElementById("ncAccaoCorrectiva").value.trim();
     const prazo = document.getElementById("ncPrazo").value || null;
-    const responsavelIds = [...document.querySelectorAll("#listaResponsaveisNc button.activo")].map((b) => b.dataset.id);
+    const responsavelIds = [...document.querySelectorAll("#listaResponsaveisNc input:checked")].map((c) => c.value);
 
     if (!descricao) { toast("Escreve a descrição da não-conformidade.", "erro"); return; }
 
@@ -178,7 +179,7 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     document.getElementById("ncDescricao").value = "";
     document.getElementById("ncAccaoCorrectiva").value = "";
     document.getElementById("ncPrazo").value = "";
-    document.querySelectorAll("#listaResponsaveisNc button.activo").forEach((b) => b.classList.remove("activo"));
+    document.querySelectorAll("#listaResponsaveisNc input:checked").forEach((c) => c.checked = false);
 });
 
 function renderizarNcPendentes() {
@@ -306,7 +307,7 @@ async function carregarAuditorias() {
     if (error) { console.error(error); return; }
 
     const corpo = document.getElementById("corpoAuditorias");
-    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem auditorias ainda.</td></tr>`;
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem auditorias ainda.</td></tr>`;
     data.forEach((au) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -314,9 +315,19 @@ async function carregarAuditorias() {
             <td data-rotulo="Data">${formatarData(au.data_auditoria)}</td>
             <td data-rotulo="Zona">${escaparHtml(au.localizacoes?.nome ?? "—")}</td>
             <td data-rotulo="Não-conformidades">${au.nao_conformidades?.length ?? 0}</td>
+            <td data-rotulo="Acção"><button class="secundario" onclick="apagarAuditoria('${au.id}')" style="padding:4px 10px; font-size:12px;">Apagar</button></td>
         `;
         corpo.appendChild(tr);
     });
+}
+
+async function apagarAuditoria(auditoriaId) {
+    if (!confirm("Apagar esta auditoria? Isto apaga também as não-conformidades ligadas a ela, sem forma de desfazer.")) return;
+    const { error } = await supabaseClient.from("auditorias").delete().eq("id", auditoriaId);
+    if (error) { toast("Erro ao apagar: " + traduzirErro(error.message), "erro"); return; }
+    toast("Auditoria apagada.", "sucesso");
+    carregarAuditorias();
+    carregarKpis();
 }
 
 // --- Gráfico de evolução do tempo de resolução ------------------------------

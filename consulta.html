@@ -16,6 +16,7 @@
 <div class="layout-admin">
 <nav class="barra-lateral">
     <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
+    <button id="botaoMenuMobile" onclick="alternarMenuMobile()" aria-label="Menu"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
     <button class="nav-item activo" data-secao="visao-geral"><i class="ti ti-chart-bar" aria-hidden="true"></i> Visão geral</button>
     <button class="nav-item" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
     <button class="nav-item" data-secao="precos" id="navPrecos" style="display:none;"><i class="ti ti-tags" aria-hidden="true"></i> Preços &amp; Receitas</button>
@@ -191,6 +192,7 @@
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
         </p>
+        <div class="filtros" id="filtrosMinhasNc" style="display:none;"></div>
         <div id="corpoMinhasNc"></div>
     </div>
 </section>
