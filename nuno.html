@@ -747,6 +747,22 @@ document.getElementById("btnPedirEmFalta").addEventListener("click", async () =>
     carregarPedidos();
 });
 
+const TITULOS_SECAO = {
+    encomendas: "Encomendas", producao: "Produção diária", plano: "Plano de produção",
+    pedidos: "Pedidos ao armazém", movimentos: "Movimentos de stock",
+};
+
+function mudarSecao(secao) {
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
+    document.querySelectorAll(".painel").forEach((p) => p.classList.toggle("activo", p.dataset.secao === secao));
+    document.getElementById("tituloSecao").textContent = TITULOS_SECAO[secao] ?? "Encomendas";
+    localStorage.setItem("batardas_secao_nuno", secao);
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
+});
+mudarSecao(localStorage.getItem("batardas_secao_nuno") ?? "encomendas");
+
 iniciar();
 </script>
 </body>
