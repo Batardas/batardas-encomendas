@@ -291,7 +291,7 @@
 async function iniciar() {
     const contexto = await exigirRole(["armazem", "admin"]);
     if (!contexto) return;
-    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarCabecalhoUtilizador(contexto.perfil, contexto.session.user.id);
     renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
     await carregar();

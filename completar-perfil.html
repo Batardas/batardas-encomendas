@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Completa o teu perfil — Batardas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="icon" href="img/logo.png" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-box" style="max-width:420px;">
+    <img class="logo" src="img/logo.png" alt="Batardas">
+    <h1 style="font-size:20px; margin:8px 0 2px;">Completa o teu perfil</h1>
+    <p style="color:var(--ink-suave); font-size:13px; margin-top:-4px;">
+        É só desta vez — precisamos do teu nome, data de aniversário e uma foto antes de continuares.
+    </p>
+
+    <div style="display:flex; justify-content:center; margin:12px 0;">
+        <label for="cpFoto" style="cursor:pointer; text-align:center;">
+            <div id="cpPreviewFoto" style="width:88px; height:88px; border-radius:50%; background:var(--surface-recuado); border:2px dashed var(--linha); display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                <i class="ti ti-camera" style="font-size:26px; color:var(--ink-suave);" aria-hidden="true"></i>
+            </div>
+            <span style="font-size:12px; color:var(--ink-suave); display:block; margin-top:6px;">Carregar foto</span>
+        </label>
+        <input type="file" id="cpFoto" accept="image/*" capture="environment" style="display:none;">
+    </div>
+
+    <input id="cpNome" type="text" placeholder="Nome completo" autocomplete="name">
+    <input id="cpAniversario" type="date" placeholder="Data de aniversário">
+    <input id="cpEmailContacto" type="email" placeholder="Email de contacto (opcional — para receberes alertas)">
+
+    <button id="btnGuardarPerfil" style="margin-top:8px;">Continuar</button>
+    <p id="erro" class="erro"></p>
+</div>
+
+<script src="js/supabaseClient.js"></script>
+<script>
+let sessaoActual = null;
+let ficheiroFotoEscolhido = null;
+
+(async () => {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = "index.html"; return; }
+    sessaoActual = session;
+
+    const perfil = await obterPerfil(session.user.id);
+    if (!perfil) { window.location.href = "index.html"; return; }
+    if (perfil.perfil_completo) {
+        window.location.href = ROTA_POR_ROLE[perfil.role] ?? "consulta.html";
+        return;
+    }
+    if (perfil.nome && !perfil.nome.includes("@")) document.getElementById("cpNome").value = perfil.nome;
+})();
+
+document.getElementById("cpFoto").addEventListener("change", (e) => {
+    const ficheiro = e.target.files[0];
+    if (!ficheiro) return;
+    ficheiroFotoEscolhido = ficheiro;
+    const leitor = new FileReader();
+    leitor.onload = (ev) => {
+        document.getElementById("cpPreviewFoto").innerHTML = `<img src="${ev.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+    };
+    leitor.readAsDataURL(ficheiro);
+});
+
+document.getElementById("btnGuardarPerfil").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erro");
+    erroEl.textContent = "";
+
+    const nome = document.getElementById("cpNome").value.trim();
+    const aniversario = document.getElementById("cpAniversario").value;
+    const emailContacto = document.getElementById("cpEmailContacto").value.trim();
+
+    if (!nome) { erroEl.textContent = "Escreve o teu nome completo."; return; }
+    if (!aniversario) { erroEl.textContent = "Escolhe a tua data de aniversário."; return; }
+    if (!ficheiroFotoEscolhido) { erroEl.textContent = "Carrega uma foto para continuares."; return; }
+
+    const nomeLimpo = ficheiroFotoEscolhido.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const caminho = `${sessaoActual.user.id}/${Date.now()}_${nomeLimpo}`;
+    const { error: erroUpload } = await supabaseClient.storage.from("fotos-perfil").upload(caminho, ficheiroFotoEscolhido);
+    if (erroUpload) { erroEl.textContent = "Erro ao carregar a foto: " + erroUpload.message; return; }
+
+    const { error: erroPerfil } = await supabaseClient.from("perfis").update({
+        nome,
+        data_aniversario: aniversario,
+        email_contacto: emailContacto || null,
+        foto_caminho: caminho,
+        perfil_completo: true,
+    }).eq("id", sessaoActual.user.id);
+    if (erroPerfil) { erroEl.textContent = "Erro ao guardar: " + traduzirErro(erroPerfil.message); return; }
+
+    const perfil = await obterPerfil(sessaoActual.user.id);
+    window.location.href = ROTA_POR_ROLE[perfil?.role] ?? "consulta.html";
+});
+</script>
+</body>
+</html>

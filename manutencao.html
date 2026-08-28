@@ -143,7 +143,7 @@ let todosPedidosManutencao = [];
 async function iniciar() {
     const contexto = await exigirRole(["manutencao", "admin"]);
     if (!contexto) return;
-    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarCabecalhoUtilizador(contexto.perfil, contexto.session.user.id);
     renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
 

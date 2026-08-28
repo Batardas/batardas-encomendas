@@ -564,13 +564,14 @@
     <div class="cartao" id="cartaoCriarUtilizador" style="display:none;">
         <h2>Utilizadores e acessos</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
-            Cria contas e repõe passwords sem teres de entrar no painel do Supabase.
+            Cria contas e repõe passwords sem teres de entrar no painel do Supabase. O login passou a ser por nome de utilizador (ex. "f.sena"), não por email — o email de contacto é opcional e só serve para receber alertas.
         </p>
         <div class="linha-form">
-            <input id="uNome" placeholder="Nome">
-            <input id="uEmail" type="email" placeholder="Email">
+            <input id="uNome" placeholder="Nome completo">
+            <input id="uNomeUtilizador" placeholder="Nome de utilizador (ex. f.sena)">
         </div>
         <div class="linha-form">
+            <input id="uEmailContacto" type="email" placeholder="Email de contacto (opcional — para alertas)">
             <select id="uRole">
                 <option value="consulta">Consulta</option>
                 <option value="producao">Produção</option>
@@ -579,8 +580,8 @@
                 <option value="manutencao">Manutenção</option>
                 <option value="admin">Admin</option>
             </select>
-            <button id="btnCriarUtilizador">Criar utilizador</button>
         </div>
+        <button id="btnCriarUtilizador">Criar utilizador</button>
         <p id="erroUtilizador" class="erro"></p>
     </div>
 
@@ -590,7 +591,7 @@
             Repõe a password de quem ficar bloqueado, sem teres de entrar no painel do Supabase.
         </p>
         <table style="margin-top:16px;">
-            <thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Acção</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Utilizador</th><th>Perfil</th><th>Acção</th></tr></thead>
             <tbody id="corpoUtilizadores"></tbody>
         </table>
     </div>
@@ -774,7 +775,7 @@
 async function iniciar() {
     const contexto = await exigirRole(["admin"]);
     if (!contexto) return;
-    document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarCabecalhoUtilizador(contexto.perfil, contexto.session.user.id);
     renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
 
@@ -1792,7 +1793,7 @@ async function carregarUtilizadores() {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td data-rotulo="Nome">${escaparHtml(u.nome)}</td>
-            <td data-rotulo="Email">${escaparHtml(u.email)}</td>
+            <td data-rotulo="Utilizador">${escaparHtml(u.nome_utilizador ?? "—")}</td>
             <td data-rotulo="Perfil">${NOME_ROLE[u.role] ?? u.role}</td>
             <td data-rotulo="Acção"><button class="secundario">Repor password</button></td>
         `;
@@ -1900,17 +1901,19 @@ document.getElementById("btnCriarUtilizador").addEventListener("click", async ()
     erroEl.textContent = "";
 
     const nome = document.getElementById("uNome").value.trim();
-    const email = document.getElementById("uEmail").value.trim();
+    const nomeUtilizador = document.getElementById("uNomeUtilizador").value.trim();
+    const emailContacto = document.getElementById("uEmailContacto").value.trim();
     const role = document.getElementById("uRole").value;
 
-    if (!nome || !email) { erroEl.textContent = "Preenche nome e email."; return; }
+    if (!nome || !nomeUtilizador) { erroEl.textContent = "Preenche nome e nome de utilizador."; return; }
 
-    const resultado = await chamarGestaoUtilizadores({ acao: "criar_utilizador", nome, email, role });
+    const resultado = await chamarGestaoUtilizadores({ acao: "criar_utilizador", nome, nomeUtilizador, emailContacto, role });
     if (resultado.error) { erroEl.textContent = "Erro: " + resultado.error; return; }
 
-    mostrarModalPassword(`Conta criada — password inicial de ${nome}`, resultado.password);
+    mostrarModalPassword(`Conta criada — utilizador "${resultado.nomeUtilizador}" — password inicial`, resultado.password);
     document.getElementById("uNome").value = "";
-    document.getElementById("uEmail").value = "";
+    document.getElementById("uNomeUtilizador").value = "";
+    document.getElementById("uEmailContacto").value = "";
     carregarUtilizadores();
 });
 
