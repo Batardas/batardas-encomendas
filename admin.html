@@ -54,6 +54,14 @@
 <main>
 
 <section class="painel activo" data-secao="encomendas">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoMinhasNc"></tbody>
+        </table>
+    </div>
+
     <div class="cartao">
         <h2>Nova encomenda</h2>
         <div class="linha-form">
@@ -339,6 +347,39 @@
 
 <section class="painel" data-secao="stock">
     <div class="cartao">
+        <h2>Pedir inventário</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Pré-preenche a lista de itens a partir do stock actual dessa zona — o Fernando só tem de contar e confirmar.
+        </p>
+        <div class="linha-form">
+            <select id="ivPedirZona"><option value="">Escolhe a zona...</option></select>
+            <button id="btnPedirInventario">Pedir inventário</button>
+        </div>
+        <p id="erroPedirInventario" class="erro"></p>
+    </div>
+
+    <div class="cartao">
+        <h2>Inventários por rever</h2>
+        <table>
+            <thead><tr><th>Zona</th><th>Concluído em</th><th>Diferenças</th><th>Acção</th></tr></thead>
+            <tbody id="corpoInventariosParaRever"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoRevisaoInventario" style="display:none;">
+        <h2>A rever: <span id="tituloRevisaoInventario"></span></h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Só as linhas com diferença aparecem aqui. Ao confirmares, cada diferença entra como um movimento de ajuste — a mesma lógica das importações.
+        </p>
+        <table>
+            <thead><tr><th>Artigo</th><th>Lote</th><th>Esperado</th><th>Contado</th><th>Diferença</th></tr></thead>
+            <tbody id="corpoDiferencasInventario"></tbody>
+        </table>
+        <button id="btnConfirmarRevisaoInventario" style="margin-top:16px;">Confirmar revisão e ajustar stock</button>
+        <p id="erroRevisaoInventario" class="erro"></p>
+    </div>
+
+    <div class="cartao">
         <h2>Entrada de stock com preço pago</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Só tu registas isto (não o Nuno/Fernando, que só fazem movimentos sem preço) — o custo médio do artigo actualiza-se sozinho a partir do preço que puseres aqui.
@@ -526,6 +567,25 @@
             <tbody id="corpoUtilizadores"></tbody>
         </table>
     </div>
+
+    <div class="cartao">
+        <h2>Acessos extra e etiquetas de responsabilidade</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Acesso extra dá entrada noutro módulo inteiro (ex. a Maria é Consulta mas também precisa de entrar em Qualidade). Etiqueta de responsabilidade não dá acesso a nada — só decide quem pode assumir/fechar pedidos numa área (ex. "manutencao").
+        </p>
+        <select id="aeUtilizador"><option value="">Escolhe um utilizador...</option></select>
+
+        <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Acessos extra</p>
+        <div id="listaAcessosExtra" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
+
+        <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Etiquetas de responsabilidade</p>
+        <div id="listaResponsabilidades" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
+        <div class="linha-form">
+            <input id="aeNovaEtiqueta" placeholder="Nova etiqueta (ex. manutencao)">
+            <button class="secundario" id="btnAdicionarEtiqueta">Adicionar etiqueta</button>
+        </div>
+        <p id="erroAcessosExtra" class="erro"></p>
+    </div>
 </section>
 
 <section class="painel" data-secao="financeiro">
@@ -676,8 +736,12 @@ async function iniciar() {
     const contexto = await exigirRole(["admin"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
     await carregar();
+    carregarMinhasNcPartilhado(contexto.session.user.id);
+    await carregarZonasParaInventario();
+    await carregarInventariosParaRever();
 
     supabaseClient
         .channel("encomendas-admin")
@@ -695,6 +759,7 @@ async function iniciar() {
     await carregarPlaneamentoSemanal();
     await carregarPlanoDoDiaAdmin();
     await carregarUtilizadores();
+    await carregarUtilizadoresParaAcessosExtra();
     await carregarZonas();
     await carregarListaReceitas();
 
@@ -1672,6 +1737,80 @@ async function reporPassword(userId, nome) {
     if (resultado.error) { toast("Erro: " + resultado.error, "erro"); return; }
     mostrarModalPassword(`Nova password de ${nome}`, resultado.password);
 }
+
+// --- Acessos extra e etiquetas de responsabilidade -------------------------
+async function carregarUtilizadoresParaAcessosExtra() {
+    const { data } = await supabaseClient.from("perfis").select("id, nome, role").order("nome");
+    const select = document.getElementById("aeUtilizador");
+    select.innerHTML = `<option value="">Escolhe um utilizador...</option>` +
+        (data ?? []).map((p) => `<option value="${p.id}" data-role="${p.role}">${escaparHtml(p.nome)} (${NOME_ROLE[p.role] ?? p.role})</option>`).join("");
+}
+
+document.getElementById("aeUtilizador").addEventListener("change", async () => {
+    const utilizadorId = document.getElementById("aeUtilizador").value;
+    if (!utilizadorId) {
+        document.getElementById("listaAcessosExtra").innerHTML = "";
+        document.getElementById("listaResponsabilidades").innerHTML = "";
+        return;
+    }
+    await carregarAcessosExtraDoUtilizador(utilizadorId);
+    await carregarResponsabilidadesDoUtilizador(utilizadorId);
+});
+
+async function carregarAcessosExtraDoUtilizador(utilizadorId) {
+    const roleAtual = document.getElementById("aeUtilizador").selectedOptions[0]?.dataset.role;
+    const { data: extras } = await supabaseClient.from("acessos_extra").select("role").eq("perfil_id", utilizadorId);
+    const rolesActivos = new Set((extras ?? []).map((e) => e.role));
+
+    const container = document.getElementById("listaAcessosExtra");
+    container.innerHTML = "";
+    Object.entries(NOME_ROLE).forEach(([role, nome]) => {
+        if (role === roleAtual) return; // já é o perfil principal, não faz sentido como "extra"
+        const activo = rolesActivos.has(role);
+        const btn = document.createElement("button");
+        btn.className = activo ? "" : "secundario";
+        btn.textContent = nome + (activo ? " ✓" : "");
+        btn.addEventListener("click", async () => {
+            if (activo) {
+                await supabaseClient.from("acessos_extra").delete().eq("perfil_id", utilizadorId).eq("role", role);
+            } else {
+                await supabaseClient.from("acessos_extra").insert({ perfil_id: utilizadorId, role });
+            }
+            carregarAcessosExtraDoUtilizador(utilizadorId);
+        });
+        container.appendChild(btn);
+    });
+}
+
+async function carregarResponsabilidadesDoUtilizador(utilizadorId) {
+    const { data } = await supabaseClient.from("responsabilidades").select("etiqueta").eq("perfil_id", utilizadorId);
+    const container = document.getElementById("listaResponsabilidades");
+    container.innerHTML = (data ?? []).length ? "" : `<p style="font-size:13px; color:var(--ink-suave);">Nenhuma etiqueta ainda.</p>`;
+    (data ?? []).forEach((r) => {
+        const btn = document.createElement("button");
+        btn.className = "secundario";
+        btn.textContent = r.etiqueta + " ✕";
+        btn.addEventListener("click", async () => {
+            await supabaseClient.from("responsabilidades").delete().eq("perfil_id", utilizadorId).eq("etiqueta", r.etiqueta);
+            carregarResponsabilidadesDoUtilizador(utilizadorId);
+        });
+        container.appendChild(btn);
+    });
+}
+
+document.getElementById("btnAdicionarEtiqueta").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroAcessosExtra");
+    erroEl.textContent = "";
+    const utilizadorId = document.getElementById("aeUtilizador").value;
+    const etiqueta = document.getElementById("aeNovaEtiqueta").value.trim().toLowerCase();
+    if (!utilizadorId) { erroEl.textContent = "Escolhe primeiro um utilizador."; return; }
+    if (!etiqueta) { erroEl.textContent = "Escreve o nome da etiqueta."; return; }
+
+    const { error } = await supabaseClient.from("responsabilidades").insert({ perfil_id: utilizadorId, etiqueta });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+    document.getElementById("aeNovaEtiqueta").value = "";
+    carregarResponsabilidadesDoUtilizador(utilizadorId);
+});
 
 document.getElementById("btnCriarUtilizador").addEventListener("click", async () => {
     const erroEl = document.getElementById("erroUtilizador");
@@ -2733,6 +2872,128 @@ document.getElementById("btnPesquisarRastreio").addEventListener("click", async 
         html = `<p style="color:var(--ink-suave);">Nenhum lote encontrado com esse número.</p>`;
     }
     resultadoEl.innerHTML = html;
+});
+
+// --- Inventário — pedir e rever -------------------------------------------
+async function carregarZonasParaInventario() {
+    const { data } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    document.getElementById("ivPedirZona").innerHTML = `<option value="">Escolhe a zona...</option>` +
+        (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+}
+
+document.getElementById("btnPedirInventario").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroPedirInventario");
+    erroEl.textContent = "";
+    const zonaId = document.getElementById("ivPedirZona").value;
+    if (!zonaId) { erroEl.textContent = "Escolhe uma zona."; return; }
+
+    const { error } = await supabaseClient.from("inventarios").insert({ localizacao_id: zonaId });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+    toast("Inventário pedido — o Fernando foi avisado.", "sucesso");
+    document.getElementById("ivPedirZona").value = "";
+});
+
+async function carregarInventariosParaRever() {
+    const { data, error } = await supabaseClient
+        .from("inventarios")
+        .select("id, concluido_em, localizacoes(nome), inventario_itens(quantidade_esperada, quantidade_contada)")
+        .eq("estado", "Concluído pelo armazém")
+        .order("concluido_em", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoInventariosParaRever");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem inventários por rever.</td></tr>`;
+    data.forEach((inv) => {
+        const diferencas = (inv.inventario_itens ?? []).filter((i) => i.quantidade_contada !== null && Number(i.quantidade_contada) !== Number(i.quantidade_esperada)).length;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Zona">${escaparHtml(inv.localizacoes?.nome ?? "—")}</td>
+            <td data-rotulo="Concluído em">${formatarData(inv.concluido_em)}</td>
+            <td data-rotulo="Diferenças">${diferencas}</td>
+            <td data-rotulo="Acção"><button onclick="abrirRevisaoInventario('${inv.id}', '${escaparHtml(inv.localizacoes?.nome ?? "—")}')">Rever</button></td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+
+let inventarioEmRevisaoId = null;
+
+async function abrirRevisaoInventario(inventarioId, nomeZona) {
+    inventarioEmRevisaoId = inventarioId;
+    document.getElementById("tituloRevisaoInventario").textContent = nomeZona;
+    document.getElementById("cartaoRevisaoInventario").style.display = "block";
+
+    const { data } = await supabaseClient
+        .from("inventario_itens")
+        .select("id, numero_lote, quantidade_esperada, quantidade_contada, lote_artigo_id, artigo_id, artigos(designacao, unidade)")
+        .eq("inventario_id", inventarioId);
+
+    const comDiferenca = (data ?? []).filter((i) => i.quantidade_contada !== null && Number(i.quantidade_contada) !== Number(i.quantidade_esperada));
+    const corpo = document.getElementById("corpoDiferencasInventario");
+    corpo.innerHTML = comDiferenca.length ? "" : `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem diferenças — tudo bateu certo.</td></tr>`;
+    comDiferenca.forEach((item) => {
+        const diferenca = Number(item.quantidade_contada) - Number(item.quantidade_esperada);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Artigo">${escaparHtml(item.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Lote" class="mono">${escaparHtml(item.numero_lote)}</td>
+            <td data-rotulo="Esperado">${item.quantidade_esperada}</td>
+            <td data-rotulo="Contado">${item.quantidade_contada}</td>
+            <td data-rotulo="Diferença"><strong style="color:${diferenca < 0 ? 'var(--perigo)' : 'inherit'};">${diferenca > 0 ? "+" : ""}${diferenca}</strong></td>
+        `;
+        corpo.appendChild(tr);
+    });
+    document.getElementById("cartaoRevisaoInventario").dataset.itens = JSON.stringify(comDiferenca);
+    document.getElementById("cartaoRevisaoInventario").scrollIntoView({ behavior: "smooth" });
+}
+
+document.getElementById("btnConfirmarRevisaoInventario").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroRevisaoInventario");
+    erroEl.textContent = "";
+    const itens = JSON.parse(document.getElementById("cartaoRevisaoInventario").dataset.itens || "[]");
+
+    for (const item of itens) {
+        const diferenca = Number(item.quantidade_contada) - Number(item.quantidade_esperada);
+        let loteArtigoId = item.lote_artigo_id;
+
+        // Item encontrado pelo Fernando que o sistema não conhecia — cria
+        // o lote agora, com stock 0, para o ajuste a seguir entrar como
+        // um movimento normal (mesma lógica das importações).
+        if (!loteArtigoId) {
+            const { data: novoLote, error: erroLote } = await supabaseClient
+                .from("lotes_artigo")
+                .insert({ artigo_id: item.artigo_id, numero_lote: item.numero_lote, quantidade_atual: 0 })
+                .select("lote_artigo_id").single();
+            if (erroLote) { erroEl.textContent = `${item.numero_lote}: ${traduzirErro(erroLote.message)}`; continue; }
+            loteArtigoId = novoLote.lote_artigo_id;
+        }
+
+        if (diferenca !== 0) {
+            const { error: erroAjuste } = await supabaseClient.from("movimentos_stock").insert({
+                tipo: diferenca > 0 ? "Entrada" : "Saída",
+                lote_artigo_id: loteArtigoId,
+                unidade_movimentacao: "un",
+                quantidade: Math.abs(diferenca),
+                estado: "Registado",
+                data_registo: new Date().toISOString(),
+                observacoes: `Ajuste de inventário em ${new Date().toLocaleDateString("pt-PT")}`,
+            });
+            if (erroAjuste) { erroEl.textContent = `${item.numero_lote}: ${traduzirErro(erroAjuste.message)}`; continue; }
+        }
+    }
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { error } = await supabaseClient.from("inventarios")
+        .update({ estado: "Revisto", revisto_em: new Date().toISOString(), revisto_por: session.user.id })
+        .eq("id", inventarioEmRevisaoId);
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+
+    toast("Inventário revisto — stock ajustado, email a caminho.", "sucesso");
+    document.getElementById("cartaoRevisaoInventario").style.display = "none";
+    inventarioEmRevisaoId = null;
+    carregarInventariosParaRever();
+    carregarLotes();
+    carregarMovimentosStock();
 });
 
 iniciar();

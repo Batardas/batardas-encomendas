@@ -37,6 +37,14 @@
 
 <main>
 <section class="painel activo" data-secao="encomendas">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoMinhasNc"></tbody>
+        </table>
+    </div>
+
     <div class="filtros">
         <button data-estado="todos" class="filtro-activo">Todas</button>
         <button data-estado="Registada">Registadas</button>
@@ -203,6 +211,7 @@ async function iniciar() {
     const contexto = await exigirRole(["producao", "admin"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
     await carregar();
     await activarPesquisaArtigo("fArtigoTexto", "fArtigo", "fArtigoResultados");
@@ -223,6 +232,8 @@ async function iniciar() {
         .channel("pedidos-nuno")
         .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_armazem" }, carregarPedidos)
         .subscribe();
+
+    carregarMinhasNcPartilhado(contexto.session.user.id);
 }
 
 async function carregarLotesArtigo() {

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Preparação / Armazém — Batardas</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <link rel="icon" href="img/logo.png" type="image/png">
 <link rel="stylesheet" href="css/style.css">
@@ -16,6 +18,8 @@
     <button class="nav-item activo" data-secao="picking"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Picking</button>
     <button class="nav-item" data-secao="pedidos"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Pedidos <span class="contador" id="contadorPedidos" style="display:none;"></span></button>
     <button class="nav-item" data-secao="movimentos"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Movimentos de stock</button>
+    <button class="nav-item" data-secao="zonas"><i class="ti ti-map-pin" aria-hidden="true"></i> Stock &amp; Zonas</button>
+    <button class="nav-item" data-secao="inventario"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Inventário <span class="contador" id="contadorInventario" style="display:none;"></span></button>
 </nav>
 
 <div class="conteudo-admin">
@@ -33,6 +37,14 @@
 
 <main>
 <section class="painel activo" data-secao="picking">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoMinhasNc"></tbody>
+        </table>
+    </div>
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
         <div class="cartao" style="margin-bottom:0; padding:16px;">
             <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">Para preparar</p>
@@ -106,6 +118,75 @@
         <p id="erroMovimento" class="erro"></p>
     </div>
 </section>
+
+<section class="painel" data-secao="zonas">
+    <div class="cartao">
+        <h2>Zonas de armazém</h2>
+        <div class="linha-form">
+            <input id="zNome" placeholder="Nome da zona (ex. Câmara Fria, A3)">
+            <button id="btnCriarZona">Criar zona</button>
+        </div>
+        <p id="erroZona" class="erro"></p>
+        <div id="listaZonasExistentes" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>Stock por zona</h2>
+        <div class="linha-form">
+            <select id="szZona"><option value="">Todas as zonas</option></select>
+            <button class="secundario" id="btnExportarStockZona"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+        </div>
+        <table style="margin-top:12px;">
+            <thead><tr><th>Artigo</th><th>Lote</th><th>Quantidade</th></tr></thead>
+            <tbody id="corpoStockZona"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao">
+        <h2>Rastreabilidade por lote</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Escreve um número de lote para veres de onde veio e para onde foi.
+        </p>
+        <input id="rtLote" placeholder="Número do lote...">
+        <button id="btnPesquisarRastreio" class="secundario" style="margin-top:10px;">Pesquisar</button>
+        <div id="resultadoRastreio" style="margin-top:16px; font-size:13px;"></div>
+    </div>
+</section>
+
+<section class="painel" data-secao="inventario">
+    <div class="cartao">
+        <h2>Inventários por fazer</h2>
+        <table>
+            <thead><tr><th>Zona</th><th>Pedido em</th><th>Itens</th><th>Acção</th></tr></thead>
+            <tbody id="corpoInventariosPendentes"></tbody>
+        </table>
+    </div>
+
+    <div class="cartao" id="cartaoContagemInventario" style="display:none;">
+        <h2>A contar: <span id="tituloInventarioActual"></span></h2>
+        <div class="linha-form">
+            <button class="secundario" id="btnExportarPdfInventario"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF de apoio</button>
+        </div>
+        <table style="margin-top:12px;">
+            <thead><tr><th>Artigo</th><th>Lote</th><th>Esperado</th><th>Contado</th></tr></thead>
+            <tbody id="corpoItensInventario"></tbody>
+        </table>
+        <div class="linha-form" style="margin-top:12px;">
+            <div class="campo-pesquisa-artigo">
+                <input type="text" id="ivArtigoTexto" placeholder="Artigo encontrado mas não estava na lista..." autocomplete="off">
+                <input type="hidden" id="ivArtigo">
+                <div id="ivArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
+            </div>
+        </div>
+        <div class="linha-form">
+            <input id="ivNovoLote" placeholder="Número do lote">
+            <input id="ivNovaQuantidade" type="number" min="0" step="0.01" placeholder="Quantidade encontrada">
+        </div>
+        <button class="secundario" id="btnAdicionarItemInventario">Adicionar à contagem</button>
+        <p id="erroInventario" class="erro" style="margin-top:12px;"></p>
+        <button id="btnConcluirInventario" style="margin-top:12px;">Dar contagem como concluída</button>
+    </div>
+</section>
 </main>
 </div>
 </div>
@@ -116,11 +197,15 @@ async function iniciar() {
     const contexto = await exigirRole(["armazem", "admin"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
     await carregar();
     await carregarLotesArtigo();
     await carregarPedidosPendentes();
-    await carregarZonas();
+    await carregarListaZonas();
+    await carregarStockPorZona();
+    await carregarInventariosPendentes();
+    await activarPesquisaArtigo("ivArtigoTexto", "ivArtigo", "ivArtigoResultados");
 
     supabaseClient
         .channel("encomendas-fernando")
@@ -131,6 +216,8 @@ async function iniciar() {
         .channel("pedidos-fernando")
         .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_armazem" }, carregarPedidosPendentes)
         .subscribe();
+
+    carregarMinhasNcPartilhado(contexto.session.user.id);
 }
 
 async function carregarLotesArtigo() {
@@ -195,14 +282,6 @@ async function atenderPedido(pedidoId) {
     carregarPedidosPendentes();
     actualizarContadorAlertas();
     toast("Pedido marcado como atendido.", "sucesso");
-}
-
-async function carregarZonas() {
-    const { data, error } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
-    if (error) { console.error(error); return; }
-    const opcoes = `<option value="">— nenhuma —</option>` + data.map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
-    document.getElementById("mLocalizacaoOrigem").innerHTML = opcoes;
-    document.getElementById("mLocalizacaoDestino").innerHTML = opcoes;
 }
 
 document.getElementById("mTipo").addEventListener("change", (e) => {
@@ -320,7 +399,7 @@ async function marcarPronta(encomendaId) {
     toast("Picking concluído — encomenda pronta para carregar.", "sucesso");
 }
 
-const TITULOS_SECAO = { picking: "Picking", pedidos: "Pedidos de armazém", movimentos: "Movimentos de stock" };
+const TITULOS_SECAO = { picking: "Picking", pedidos: "Pedidos de armazém", movimentos: "Movimentos de stock", zonas: "Stock & Zonas", inventario: "Inventário" };
 
 function mudarSecao(secao) {
     document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
@@ -332,6 +411,264 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.addEventListener("click", () => mudarSecao(btn.dataset.secao));
 });
 mudarSecao(localStorage.getItem("batardas_secao_fernando") ?? "picking");
+
+// --- Zonas de armazém --------------------------------------------------
+async function carregarListaZonas() {
+    const { data } = await supabaseClient.from("localizacoes").select("localizacao_id, nome").order("nome");
+    const lista = document.getElementById("listaZonasExistentes");
+    lista.innerHTML = (data ?? []).length ? "" : `<p style="font-size:13px; color:var(--ink-suave);">Ainda não há zonas criadas.</p>`;
+    (data ?? []).forEach((z) => {
+        const span = document.createElement("span");
+        span.className = "badge Registada";
+        span.textContent = z.nome;
+        lista.appendChild(span);
+    });
+    // Reaproveita a mesma lista para os selects de movimento e de filtro
+    // de stock por zona.
+    const opcoesMovimento = `<option value="">— nenhuma —</option>` + (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+    document.getElementById("mLocalizacaoOrigem").innerHTML = opcoesMovimento;
+    document.getElementById("mLocalizacaoDestino").innerHTML = opcoesMovimento;
+    document.getElementById("szZona").innerHTML = `<option value="">Todas as zonas</option>` + (data ?? []).map((z) => `<option value="${z.localizacao_id}">${escaparHtml(z.nome)}</option>`).join("");
+}
+
+document.getElementById("btnCriarZona").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroZona");
+    erroEl.textContent = "";
+    const nome = document.getElementById("zNome").value.trim();
+    if (!nome) { erroEl.textContent = "Escreve o nome da zona."; return; }
+
+    const { error } = await supabaseClient.from("localizacoes").insert({ nome });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+    document.getElementById("zNome").value = "";
+    toast("Zona criada.", "sucesso");
+    carregarListaZonas();
+});
+
+// --- Stock por zona ------------------------------------------------------
+let ultimoStockPorZona = [];
+
+async function carregarStockPorZona() {
+    const { data, error } = await supabaseClient
+        .from("lotes_artigo")
+        .select("numero_lote, quantidade_atual, localizacao_id, artigos(designacao, unidade), localizacoes(nome)")
+        .order("numero_lote");
+    if (error) { console.error(error); return; }
+    ultimoStockPorZona = data ?? [];
+    renderizarStockPorZona();
+}
+
+function renderizarStockPorZona() {
+    const zonaFiltro = document.getElementById("szZona").value;
+    const linhas = zonaFiltro ? ultimoStockPorZona.filter((l) => l.localizacao_id === zonaFiltro) : ultimoStockPorZona;
+
+    const corpo = document.getElementById("corpoStockZona");
+    corpo.innerHTML = linhas.length ? "" : `<tr><td colspan="3" style="text-align:center; color:var(--ink-suave);">Sem stock a mostrar.</td></tr>`;
+    linhas.forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Artigo">${escaparHtml(l.artigos?.designacao ?? "—")}${l.localizacoes ? `<br><span style="font-size:12px; color:var(--ink-suave);">${escaparHtml(l.localizacoes.nome)}</span>` : ""}</td>
+            <td data-rotulo="Lote" class="mono">${escaparHtml(l.numero_lote)}</td>
+            <td data-rotulo="Quantidade">${l.quantidade_atual} ${escaparHtml((l.artigos?.unidade ?? "un").toUpperCase())}</td>
+        `;
+        corpo.appendChild(tr);
+    });
+}
+document.getElementById("szZona").addEventListener("change", renderizarStockPorZona);
+
+document.getElementById("btnExportarStockZona").addEventListener("click", () => {
+    const zonaFiltro = document.getElementById("szZona").value;
+    const linhas = zonaFiltro ? ultimoStockPorZona.filter((l) => l.localizacao_id === zonaFiltro) : ultimoStockPorZona;
+    if (!linhas.length) { toast("Sem stock para exportar.", "erro"); return; }
+
+    const csv = [["Zona", "Artigo", "Lote", "Quantidade", "Unidade"]]
+        .concat(linhas.map((l) => [l.localizacoes?.nome ?? "", l.artigos?.designacao ?? "", l.numero_lote, l.quantidade_atual, (l.artigos?.unidade ?? "un").toUpperCase()]))
+        .map((linha) => linha.map(paraCsv).join(";")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `stock_por_zona_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+});
+
+function paraCsv(valor) {
+    const texto = String(valor ?? "");
+    return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+// --- Rastreabilidade por lote (igual ao do admin) -------------------------
+document.getElementById("btnPesquisarRastreio").addEventListener("click", async () => {
+    const numeroLote = document.getElementById("rtLote").value.trim();
+    const resultadoEl = document.getElementById("resultadoRastreio");
+    if (!numeroLote) { resultadoEl.textContent = "Escreve um número de lote."; return; }
+    resultadoEl.textContent = "A procurar...";
+
+    let html = "";
+
+    const { data: producoes } = await supabaseClient
+        .from("lotes_producao")
+        .select("lote_id, produto, data_producao, quantidade_produzida, quebras")
+        .eq("numero_lote", numeroLote);
+
+    for (const producao of producoes ?? []) {
+        const { data: consumos } = await supabaseClient
+            .from("consumo_lotes")
+            .select("quantidade, lotes_artigo(numero_lote, artigos(designacao))")
+            .eq("lote_producao_id", producao.lote_id);
+        html += `<p style="font-weight:600; margin-top:12px;">Produção "${escaparHtml(producao.produto)}" (${producao.quantidade_produzida} produzidas${producao.quebras > 0 ? `, ${producao.quebras} quebras` : ""}) em ${formatarData(producao.data_producao)}</p>`;
+        html += consumos?.length
+            ? `<p style="color:var(--ink-suave); margin:2px 0 6px;">Matérias-primas/intermédios usados:</p><ul style="margin:0 0 8px 18px;">${consumos.map((c) => `<li>${escaparHtml(c.lotes_artigo?.artigos?.designacao ?? "—")} · lote ${escaparHtml(c.lotes_artigo?.numero_lote ?? "—")} — ${c.quantidade}</li>`).join("")}</ul>`
+            : `<p style="color:var(--ink-suave);">Sem consumo registado.</p>`;
+    }
+
+    const { data: lotesArtigo } = await supabaseClient
+        .from("lotes_artigo")
+        .select("lote_artigo_id, quantidade_atual, artigos(designacao)")
+        .eq("numero_lote", numeroLote);
+
+    for (const lote of lotesArtigo ?? []) {
+        const { data: usos } = await supabaseClient
+            .from("consumo_lotes")
+            .select("quantidade, lotes_producao(produto, numero_lote, data_producao)")
+            .eq("lote_artigo_consumido_id", lote.lote_artigo_id);
+        html += `<p style="font-weight:600; margin-top:12px;">Lote de "${escaparHtml(lote.artigos?.designacao ?? "—")}" (${lote.quantidade_atual} ainda em stock)</p>`;
+        html += usos?.length
+            ? `<p style="color:var(--ink-suave); margin:2px 0 6px;">Usado nestas produções:</p><ul style="margin:0 0 8px 18px;">${usos.map((u) => `<li>${escaparHtml(u.lotes_producao?.produto ?? "—")} · lote ${escaparHtml(u.lotes_producao?.numero_lote ?? "—")} em ${formatarData(u.lotes_producao?.data_producao)} — ${u.quantidade}</li>`).join("")}</ul>`
+            : `<p style="color:var(--ink-suave);">Ainda não foi usado em nenhuma produção.</p>`;
+    }
+
+    if (!producoes?.length && !lotesArtigo?.length) {
+        html = `<p style="color:var(--ink-suave);">Nenhum lote encontrado com esse número.</p>`;
+    }
+    resultadoEl.innerHTML = html;
+});
+
+// --- Inventário ------------------------------------------------------------
+let inventarioActualId = null;
+let itensInventarioActual = [];
+
+async function carregarInventariosPendentes() {
+    const { data, error } = await supabaseClient
+        .from("inventarios")
+        .select("id, pedido_em, localizacoes(nome), inventario_itens(id)")
+        .eq("estado", "Em curso")
+        .order("pedido_em", { ascending: true });
+    if (error) { console.error(error); return; }
+
+    const corpo = document.getElementById("corpoInventariosPendentes");
+    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem inventários pendentes.</td></tr>`;
+    data.forEach((inv) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Zona">${escaparHtml(inv.localizacoes?.nome ?? "—")}</td>
+            <td data-rotulo="Pedido em">${formatarData(inv.pedido_em)}</td>
+            <td data-rotulo="Itens">${inv.inventario_itens?.length ?? 0}</td>
+            <td data-rotulo="Acção"><button onclick="abrirContagemInventario('${inv.id}', '${escaparHtml(inv.localizacoes?.nome ?? "—")}')">Contar</button></td>
+        `;
+        corpo.appendChild(tr);
+    });
+
+    const contador = document.getElementById("contadorInventario");
+    if (data.length) { contador.textContent = data.length; contador.style.display = "inline-flex"; }
+    else { contador.style.display = "none"; }
+}
+
+async function abrirContagemInventario(inventarioId, nomeZona) {
+    inventarioActualId = inventarioId;
+    document.getElementById("tituloInventarioActual").textContent = nomeZona;
+    document.getElementById("cartaoContagemInventario").style.display = "block";
+    await carregarItensInventario();
+    document.getElementById("cartaoContagemInventario").scrollIntoView({ behavior: "smooth" });
+}
+
+async function carregarItensInventario() {
+    const { data, error } = await supabaseClient
+        .from("inventario_itens")
+        .select("id, numero_lote, quantidade_esperada, quantidade_contada, contado, artigos(designacao, unidade)")
+        .eq("inventario_id", inventarioActualId)
+        .order("numero_lote");
+    if (error) { console.error(error); return; }
+    itensInventarioActual = data ?? [];
+    renderizarItensInventario();
+}
+
+function renderizarItensInventario() {
+    const corpo = document.getElementById("corpoItensInventario");
+    corpo.innerHTML = itensInventarioActual.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem itens.</td></tr>`;
+    itensInventarioActual.forEach((item) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td data-rotulo="Artigo">${escaparHtml(item.artigos?.designacao ?? "—")}</td>
+            <td data-rotulo="Lote" class="mono">${escaparHtml(item.numero_lote)}</td>
+            <td data-rotulo="Esperado">${item.quantidade_esperada} ${escaparHtml((item.artigos?.unidade ?? "un").toUpperCase())}</td>
+            <td data-rotulo="Contado"><input type="number" min="0" step="0.01" value="${item.quantidade_contada ?? ""}" placeholder="Escreve 0 se estiver mesmo vazio" data-id="${item.id}" style="width:120px;"></td>
+        `;
+        tr.querySelector("input").addEventListener("change", async (e) => {
+            const valor = e.target.value === "" ? null : Number(e.target.value);
+            await supabaseClient.from("inventario_itens").update({ quantidade_contada: valor, contado: valor !== null }).eq("id", item.id);
+        });
+        corpo.appendChild(tr);
+    });
+}
+
+document.getElementById("btnAdicionarItemInventario").addEventListener("click", async () => {
+    const erroEl = document.getElementById("erroInventario");
+    erroEl.textContent = "";
+    const artigoId = document.getElementById("ivArtigo").value;
+    const numeroLote = document.getElementById("ivNovoLote").value.trim();
+    const quantidade = Number(document.getElementById("ivNovaQuantidade").value);
+
+    if (!artigoId || !numeroLote || !quantidade) { erroEl.textContent = "Preenche artigo, lote e quantidade."; return; }
+
+    const { error } = await supabaseClient.from("inventario_itens").insert({
+        inventario_id: inventarioActualId, artigo_id: artigoId, numero_lote: numeroLote,
+        quantidade_esperada: 0, quantidade_contada: quantidade, contado: true,
+    });
+    if (error) { erroEl.textContent = traduzirErro(error.message); return; }
+
+    document.getElementById("ivArtigoTexto").value = "";
+    document.getElementById("ivArtigo").value = "";
+    document.getElementById("ivNovoLote").value = "";
+    document.getElementById("ivNovaQuantidade").value = "";
+    toast("Item acrescentado à contagem.", "sucesso");
+    carregarItensInventario();
+});
+
+document.getElementById("btnExportarPdfInventario").addEventListener("click", () => {
+    if (!itensInventarioActual.length) { toast("Sem itens para exportar.", "erro"); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("Batardas — Apoio à contagem de inventário", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Zona: ${document.getElementById("tituloInventarioActual").textContent} · Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+
+    doc.autoTable({
+        startY: 28,
+        head: [["Artigo", "Lote", "Esperado", "Encontrado (preencher à mão)"]],
+        body: itensInventarioActual.map((i) => [i.artigos?.designacao ?? "—", i.numero_lote, `${i.quantidade_esperada} ${(i.artigos?.unidade ?? "un").toUpperCase()}`, ""]),
+        styles: { fontSize: 10, cellPadding: 4 },
+        headStyles: { fillColor: [28, 31, 38] },
+    });
+
+    doc.save(`inventario_apoio_${new Date().toISOString().slice(0, 10)}.pdf`);
+});
+
+document.getElementById("btnConcluirInventario").addEventListener("click", async () => {
+    const naoContados = itensInventarioActual.filter((i) => !i.contado);
+    if (naoContados.length && !confirm(`${naoContados.length} item(ns) ainda sem contagem escrita. Confirmas que queres concluir mesmo assim?`)) return;
+
+    const { error } = await supabaseClient.from("inventarios")
+        .update({ estado: "Concluído pelo armazém", concluido_em: new Date().toISOString() })
+        .eq("id", inventarioActualId);
+    if (error) { toast("Erro: " + error.message, "erro"); return; }
+
+    toast("Inventário concluído — o admin foi avisado para rever.", "sucesso");
+    document.getElementById("cartaoContagemInventario").style.display = "none";
+    inventarioActualId = null;
+    carregarInventariosPendentes();
+    actualizarContadorAlertas();
+});
 
 iniciar();
 </script>

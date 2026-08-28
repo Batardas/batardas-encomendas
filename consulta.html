@@ -38,6 +38,14 @@
 
 <main>
 <section class="painel activo" data-secao="visao-geral">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <table>
+            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
+            <tbody id="corpoMinhasNc"></tbody>
+        </table>
+    </div>
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
         <div class="cartao" style="margin-bottom:0; padding:16px;">
             <p style="font-size:12px; color:var(--ink-suave); margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;">No prazo (30 dias)</p>
@@ -194,9 +202,11 @@ async function iniciar() {
     const contexto = await exigirRole(["consulta", "admin", "producao", "armazem"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
     await carregar();
     await carregarKpis();
+    carregarMinhasNcPartilhado(contexto.session.user.id);
 
     // Preços de contrato e evolução de custos são informação comercial
     // sensível — só admin e consulta veem estes separadores. A RLS já

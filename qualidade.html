@@ -77,22 +77,23 @@
             <input id="ncPrazo" type="date">
         </div>
         <div class="linha-form">
-            <select id="ncResponsavel"><option value="">Escolhe o responsável...</option></select>
+            <select id="ncResponsaveis" multiple style="height:90px;"></select>
             <button class="secundario" id="btnAdicionarNc">Adicionar à lista</button>
         </div>
+        <p style="font-size:12px; color:var(--ink-suave); margin:-4px 0 0;">Ctrl/Cmd+clique para escolheres mais do que um responsável.</p>
 
         <button id="btnGuardarAuditoria" style="margin-top:16px;">Guardar auditoria</button>
         <p id="erroAuditoria" class="erro"></p>
     </div>
 
-    <div class="cartao">
+    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
         <h2>Não-conformidades atribuídas a mim</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
             Quando resolveres, marca "Por confirmar" — a Qualidade recebe um alerta para validar e fechar.
         </p>
         <table>
             <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
-            <tbody id="corpoNcMinhas"></tbody>
+            <tbody id="corpoMinhasNc"></tbody>
         </table>
     </div>
 
@@ -133,6 +134,7 @@ async function iniciar() {
     const contexto = await exigirRole(["qualidade", "admin"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    renderizarAcessosExtra(contexto.perfil);
     await inicializarAlertas();
 
     await carregarZonasAuditoria();
@@ -141,7 +143,7 @@ async function iniciar() {
     document.getElementById("auData").valueAsDate = new Date();
 
     await carregarKpis();
-    await carregarMinhasNc(contexto.session.user.id);
+    await carregarMinhasNcPartilhado(contexto.session.user.id);
     if (contexto.perfil.role === "qualidade" || contexto.perfil.role === "admin") {
         document.getElementById("cartaoConfirmarNc").style.display = "block";
         await carregarNcParaConfirmar();
@@ -159,9 +161,8 @@ async function carregarZonasAuditoria() {
 
 async function carregarResponsaveis() {
     const { data } = await supabaseClient.from("perfis").select("id, nome").order("nome");
-    const select = document.getElementById("ncResponsavel");
-    select.innerHTML = `<option value="">Escolhe o responsável...</option>` +
-        (data ?? []).map((p) => `<option value="${p.id}">${escaparHtml(p.nome)}</option>`).join("");
+    const select = document.getElementById("ncResponsaveis");
+    select.innerHTML = (data ?? []).map((p) => `<option value="${p.id}">${escaparHtml(p.nome)}</option>`).join("");
 }
 
 // --- Montar a lista de não-conformidades antes de gravar a auditoria ------
@@ -170,17 +171,17 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     const gravidade = document.getElementById("ncGravidade").value;
     const accaoCorrectiva = document.getElementById("ncAccaoCorrectiva").value.trim();
     const prazo = document.getElementById("ncPrazo").value || null;
-    const responsavelId = document.getElementById("ncResponsavel").value || null;
+    const responsavelIds = [...document.getElementById("ncResponsaveis").selectedOptions].map((o) => o.value);
 
     if (!descricao) { toast("Escreve a descrição da não-conformidade.", "erro"); return; }
 
-    ncPendentesDaAuditoriaActual.push({ descricao, gravidade, accao_correctiva: accaoCorrectiva || null, prazo, responsavel_id: responsavelId });
+    ncPendentesDaAuditoriaActual.push({ descricao, gravidade, accao_correctiva: accaoCorrectiva || null, prazo, responsavel_ids: responsavelIds });
     renderizarNcPendentes();
 
     document.getElementById("ncDescricao").value = "";
     document.getElementById("ncAccaoCorrectiva").value = "";
     document.getElementById("ncPrazo").value = "";
-    document.getElementById("ncResponsavel").value = "";
+    [...document.getElementById("ncResponsaveis").options].forEach((o) => o.selected = false);
 });
 
 function renderizarNcPendentes() {
@@ -218,7 +219,15 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
     if (error) { erroEl.textContent = "Erro ao guardar: " + traduzirErro(error.message); return; }
 
     for (const nc of ncPendentesDaAuditoriaActual) {
-        await supabaseClient.from("nao_conformidades").insert({ ...nc, auditoria_id: auditoria.id });
+        const { responsavel_ids, ...camposNc } = nc;
+        const { data: ncCriada, error: erroNc } = await supabaseClient
+            .from("nao_conformidades").insert({ ...camposNc, auditoria_id: auditoria.id }).select("id").single();
+        if (erroNc) { erroEl.textContent = "Erro ao guardar não-conformidade: " + traduzirErro(erroNc.message); continue; }
+        if (responsavel_ids.length) {
+            await supabaseClient.from("nc_responsaveis").insert(
+                responsavel_ids.map((perfil_id) => ({ nao_conformidade_id: ncCriada.id, perfil_id }))
+            );
+        }
     }
 
     toast(`Auditoria registada${ncPendentesDaAuditoriaActual.length ? ` com ${ncPendentesDaAuditoriaActual.length} não-conformidade(s)` : ""}.`, "sucesso");
@@ -231,60 +240,23 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
     carregarAuditorias();
 });
 
-// --- Não-conformidades atribuídas a mim ------------------------------------
-async function carregarMinhasNc(meuId) {
-    const { data, error } = await supabaseClient
-        .from("nao_conformidades")
-        .select("id, descricao, gravidade, prazo, estado")
-        .eq("responsavel_id", meuId)
-        .neq("estado", "Resolvida")
-        .order("prazo", { ascending: true, nullsFirst: false });
-    if (error) { console.error(error); return; }
-
-    const corpo = document.getElementById("corpoNcMinhas");
-    corpo.innerHTML = data.length ? "" : `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem não-conformidades atribuídas a ti.</td></tr>`;
-    data.forEach((nc) => {
-        const tr = document.createElement("tr");
-        const acao = nc.estado === "Por confirmar"
-            ? `<span class="badge Carregada">Aguarda confirmação</span>`
-            : `<button onclick="marcarNcPorConfirmar('${nc.id}')">Marcar resolvida</button>`;
-        tr.innerHTML = `
-            <td data-rotulo="Descrição">${escaparHtml(nc.descricao)}</td>
-            <td data-rotulo="Gravidade">${escaparHtml(nc.gravidade)}</td>
-            <td data-rotulo="Prazo">${nc.prazo ? formatarData(nc.prazo) : "—"}</td>
-            <td data-rotulo="Estado">${escaparHtml(nc.estado)}</td>
-            <td data-rotulo="Acção">${acao}</td>
-        `;
-        corpo.appendChild(tr);
-    });
-}
-
-async function marcarNcPorConfirmar(ncId) {
-    const { error } = await supabaseClient.from("nao_conformidades")
-        .update({ estado: "Por confirmar", resolvido_em: new Date().toISOString() })
-        .eq("id", ncId);
-    if (error) { toast("Erro: " + error.message, "erro"); return; }
-    toast("Marcado como resolvido — a Qualidade vai confirmar.", "sucesso");
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    carregarMinhasNc(session.user.id);
-    actualizarContadorAlertas();
-}
 
 // --- Confirmar como Resolvida (Qualidade) ----------------------------------
 async function carregarNcParaConfirmar() {
     const { data, error } = await supabaseClient
         .from("nao_conformidades")
-        .select("id, descricao, gravidade, perfis!nao_conformidades_responsavel_id_fkey(nome)")
+        .select("id, descricao, gravidade, nc_responsaveis(perfis(nome))")
         .eq("estado", "Por confirmar");
     if (error) { console.error(error); return; }
 
     const corpo = document.getElementById("corpoNcConfirmar");
     corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Nada à espera de confirmação.</td></tr>`;
     data.forEach((nc) => {
+        const nomesResponsaveis = (nc.nc_responsaveis ?? []).map((r) => r.perfis?.nome).filter(Boolean).join(", ") || "—";
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td data-rotulo="Descrição">${escaparHtml(nc.descricao)}</td>
-            <td data-rotulo="Responsável">${escaparHtml(nc.perfis?.nome ?? "—")}</td>
+            <td data-rotulo="Responsável">${escaparHtml(nomesResponsaveis)}</td>
             <td data-rotulo="Gravidade">${escaparHtml(nc.gravidade)}</td>
             <td data-rotulo="Acção"><button onclick="confirmarNcResolvida('${nc.id}')">Confirmar resolvida</button></td>
         `;
