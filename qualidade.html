@@ -222,9 +222,13 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
             .from("nao_conformidades").insert({ ...camposNc, auditoria_id: auditoria.id }).select("id").single();
         if (erroNc) { erroEl.textContent = "Erro ao guardar não-conformidade: " + traduzirErro(erroNc.message); continue; }
         if (responsavel_ids.length) {
-            await supabaseClient.from("nc_responsaveis").insert(
+            const { error: erroResponsaveis } = await supabaseClient.from("nc_responsaveis").insert(
                 responsavel_ids.map((perfil_id) => ({ nao_conformidade_id: ncCriada.id, perfil_id }))
             );
+            if (erroResponsaveis) {
+                erroEl.textContent = "A não-conformidade foi guardada, mas falhou ao atribuir responsável: " + traduzirErro(erroResponsaveis.message);
+                continue;
+            }
         }
     }
 
