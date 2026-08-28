@@ -27,6 +27,7 @@
     <button class="nav-item" data-secao="utilizadores"><i class="ti ti-users" aria-hidden="true"></i> Utilizadores</button>
     <button class="nav-item" data-secao="financeiro"><i class="ti ti-chart-line" aria-hidden="true"></i> Preços &amp; Custos</button>
     <button class="nav-item" data-secao="importar"><i class="ti ti-upload" aria-hidden="true"></i> Importações</button>
+    <button class="nav-item" data-secao="qualidade"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</button>
 
     <div style="margin-top:auto; padding:16px 20px 4px; border-top:1px solid var(--linha);">
         <p style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-fraca); margin:12px 0 8px;">Ver como</p>
@@ -54,14 +55,6 @@
 <main>
 
 <section class="painel activo" data-secao="encomendas">
-    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
-        <h2>Não-conformidades atribuídas a mim</h2>
-        <table>
-            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
-            <tbody id="corpoMinhasNc"></tbody>
-        </table>
-    </div>
-
     <div class="cartao">
         <h2>Nova encomenda</h2>
         <div class="linha-form">
@@ -581,7 +574,8 @@
         <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Etiquetas de responsabilidade</p>
         <div id="listaResponsabilidades" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
         <div class="linha-form">
-            <input id="aeNovaEtiqueta" placeholder="Nova etiqueta (ex. manutencao)">
+            <input id="aeNovaEtiqueta" list="listaEtiquetasConhecidas" placeholder="Nova etiqueta (ex. manutencao)">
+            <datalist id="listaEtiquetasConhecidas"></datalist>
             <button class="secundario" id="btnAdicionarEtiqueta">Adicionar etiqueta</button>
         </div>
         <p id="erroAcessosExtra" class="erro"></p>
@@ -726,6 +720,16 @@
     </div>
 </section>
 
+<section class="painel" data-secao="qualidade">
+    <div class="cartao" id="cartaoMinhasNc">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
+        </p>
+        <div id="corpoMinhasNc"></div>
+    </div>
+</section>
+
 </main>
 </div>
 </div>
@@ -760,6 +764,7 @@ async function iniciar() {
     await carregarPlanoDoDiaAdmin();
     await carregarUtilizadores();
     await carregarUtilizadoresParaAcessosExtra();
+    await carregarEtiquetasConhecidas();
     await carregarZonas();
     await carregarListaReceitas();
 
@@ -947,23 +952,20 @@ async function carregarPlanoDoDiaAdmin() {
 }
 document.getElementById("ppData").addEventListener("change", carregarPlanoDoDiaAdmin);
 
-document.getElementById("btnExportarNecessidades").addEventListener("click", () => {
+document.getElementById("btnExportarNecessidades").addEventListener("click", async () => {
     if (!ultimasNecessidadesAdmin.length) { toast("Nada para exportar ainda.", "erro"); return; }
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const dataPlano = document.getElementById("ppData").value;
-    doc.setFontSize(16);
-    doc.text("Batardas — Matérias-primas necessárias", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Plano de produção de ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+    const startY = await iniciarPdfComMarca(doc, "Matérias-primas necessárias", `Plano de produção de ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`);
 
     doc.autoTable({
-        startY: 28,
+        startY,
         head: [["Matéria-prima", "Necessário", "Stock actual", "Em falta"]],
         body: ultimasNecessidadesAdmin.map((n) => [n.designacao, n.necessario.toFixed(2), n.stock.toFixed(2), n.em_falta > 0 ? n.em_falta.toFixed(2) : "—"]),
         styles: { fontSize: 10, cellPadding: 3 },
-        headStyles: { fillColor: [28, 31, 38] },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
         didParseCell: (dados) => {
             if (dados.column.index === 3 && dados.cell.raw !== "—") {
                 dados.cell.styles.textColor = [188, 32, 46];
@@ -1542,11 +1544,7 @@ document.getElementById("btnPdf").addEventListener("click", async () => {
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
-
-    doc.setFontSize(16);
-    doc.text("Batardas — Calendário Semanal de Encomendas", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`${formatarData(segunda)} a ${formatarData(domingo)}`, 14, 22);
+    const startY = await iniciarPdfComMarca(doc, "Calendário Semanal de Encomendas", `${formatarData(segunda)} a ${formatarData(domingo)}`);
 
     const linhas = data.map((enc) => [
         formatarData(enc.data_entrega_pretendida),
@@ -1556,11 +1554,11 @@ document.getElementById("btnPdf").addEventListener("click", async () => {
     ]);
 
     doc.autoTable({
-        startY: 28,
+        startY,
         head: [["Entrega", "Cliente", "Estado", "Responsável"]],
         body: linhas.length ? linhas : [["—", "Sem encomendas esta semana", "—", "—"]],
         styles: { fontSize: 10 },
-        headStyles: { fillColor: [28, 31, 38] },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
     });
 
     doc.save(`folha-producao-${segunda.toISOString().slice(0, 10)}.pdf`);
@@ -1635,17 +1633,14 @@ document.getElementById("btnExportarEntregasPdf").addEventListener("click", asyn
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(16);
-    doc.text("Batardas — Rastreabilidade de entregas", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+    const startY = await iniciarPdfComMarca(doc, "Rastreabilidade de entregas", `Gerado em ${new Date().toLocaleString("pt-PT")}`);
 
     doc.autoTable({
-        startY: 28,
+        startY,
         head: [["Data", "Cliente", "Produtos e quantidades", "Lotes utilizados", "Carregado por"]],
         body: linhas,
         styles: { fontSize: 9, cellPadding: 3, valign: "top" },
-        headStyles: { fillColor: [28, 31, 38] },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
         columnStyles: { 2: { cellWidth: 70 }, 3: { cellWidth: 60 } },
     });
 
@@ -1746,6 +1741,15 @@ async function carregarUtilizadoresParaAcessosExtra() {
         (data ?? []).map((p) => `<option value="${p.id}" data-role="${p.role}">${escaparHtml(p.nome)} (${NOME_ROLE[p.role] ?? p.role})</option>`).join("");
 }
 
+async function carregarEtiquetasConhecidas() {
+    const { data } = await supabaseClient.from("responsabilidades").select("etiqueta");
+    // "manutencao" fica sempre sugerida mesmo antes de existir ninguém
+    // com ela — é a única área já combinada que vai usar isto no Bloco 4.
+    const etiquetas = new Set(["manutencao", ...(data ?? []).map((r) => r.etiqueta)]);
+    document.getElementById("listaEtiquetasConhecidas").innerHTML =
+        [...etiquetas].sort().map((e) => `<option value="${escaparHtml(e)}">`).join("");
+}
+
 document.getElementById("aeUtilizador").addEventListener("change", async () => {
     const utilizadorId = document.getElementById("aeUtilizador").value;
     if (!utilizadorId) {
@@ -1810,6 +1814,7 @@ document.getElementById("btnAdicionarEtiqueta").addEventListener("click", async 
     if (error) { erroEl.textContent = traduzirErro(error.message); return; }
     document.getElementById("aeNovaEtiqueta").value = "";
     carregarResponsabilidadesDoUtilizador(utilizadorId);
+    carregarEtiquetasConhecidas();
 });
 
 document.getElementById("btnCriarUtilizador").addEventListener("click", async () => {
@@ -3012,6 +3017,7 @@ const TITULOS_SECAO = {
     relatorios: "Relatórios",
     utilizadores: "Utilizadores",
     financeiro: "Preços & Custos",
+    qualidade: "Qualidade",
     artigos: "Artigos",
     importar: "Importações",
 };

@@ -20,6 +20,7 @@
     <button class="nav-item" data-secao="movimentos"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Movimentos de stock</button>
     <button class="nav-item" data-secao="zonas"><i class="ti ti-map-pin" aria-hidden="true"></i> Stock &amp; Zonas</button>
     <button class="nav-item" data-secao="inventario"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Inventário <span class="contador" id="contadorInventario" style="display:none;"></span></button>
+    <button class="nav-item" data-secao="qualidade"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</button>
 </nav>
 
 <div class="conteudo-admin">
@@ -37,13 +38,6 @@
 
 <main>
 <section class="painel activo" data-secao="picking">
-    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
-        <h2>Não-conformidades atribuídas a mim</h2>
-        <table>
-            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
-            <tbody id="corpoMinhasNc"></tbody>
-        </table>
-    </div>
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:24px;">
         <div class="cartao" style="margin-bottom:0; padding:16px;">
@@ -134,7 +128,7 @@
         <h2>Stock por zona</h2>
         <div class="linha-form">
             <select id="szZona"><option value="">Todas as zonas</option></select>
-            <button class="secundario" id="btnExportarStockZona"><i class="ti ti-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+            <button class="secundario" id="btnExportarStockZona"><i class="ti ti-file-download" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar PDF</button>
         </div>
         <table style="margin-top:12px;">
             <thead><tr><th>Artigo</th><th>Lote</th><th>Quantidade</th></tr></thead>
@@ -185,6 +179,16 @@
         <button class="secundario" id="btnAdicionarItemInventario">Adicionar à contagem</button>
         <p id="erroInventario" class="erro" style="margin-top:12px;"></p>
         <button id="btnConcluirInventario" style="margin-top:12px;">Dar contagem como concluída</button>
+    </div>
+</section>
+
+<section class="painel" data-secao="qualidade">
+    <div class="cartao" id="cartaoMinhasNc">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
+        </p>
+        <div id="corpoMinhasNc"></div>
     </div>
 </section>
 </main>
@@ -399,7 +403,7 @@ async function marcarPronta(encomendaId) {
     toast("Picking concluído — encomenda pronta para carregar.", "sucesso");
 }
 
-const TITULOS_SECAO = { picking: "Picking", pedidos: "Pedidos de armazém", movimentos: "Movimentos de stock", zonas: "Stock & Zonas", inventario: "Inventário" };
+const TITULOS_SECAO = { picking: "Picking", pedidos: "Pedidos de armazém", movimentos: "Movimentos de stock", zonas: "Stock & Zonas", inventario: "Inventário", qualidade: "Qualidade" };
 
 function mudarSecao(secao) {
     document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.toggle("activo", btn.dataset.secao === secao));
@@ -475,25 +479,26 @@ function renderizarStockPorZona() {
 }
 document.getElementById("szZona").addEventListener("change", renderizarStockPorZona);
 
-document.getElementById("btnExportarStockZona").addEventListener("click", () => {
+document.getElementById("btnExportarStockZona").addEventListener("click", async () => {
     const zonaFiltro = document.getElementById("szZona").value;
     const linhas = zonaFiltro ? ultimoStockPorZona.filter((l) => l.localizacao_id === zonaFiltro) : ultimoStockPorZona;
     if (!linhas.length) { toast("Sem stock para exportar.", "erro"); return; }
 
-    const csv = [["Zona", "Artigo", "Lote", "Quantidade", "Unidade"]]
-        .concat(linhas.map((l) => [l.localizacoes?.nome ?? "", l.artigos?.designacao ?? "", l.numero_lote, l.quantidade_atual, (l.artigos?.unidade ?? "un").toUpperCase()]))
-        .map((linha) => linha.map(paraCsv).join(";")).join("\r\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `stock_por_zona_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-});
+    const nomeZona = zonaFiltro ? document.getElementById("szZona").selectedOptions[0].textContent : "todas as zonas";
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const startY = await iniciarPdfComMarca(doc, "Stock por zona", `${nomeZona} · Gerado em ${new Date().toLocaleString("pt-PT")}`);
 
-function paraCsv(valor) {
-    const texto = String(valor ?? "");
-    return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
-}
+    doc.autoTable({
+        startY,
+        head: [["Zona", "Artigo", "Lote", "Quantidade"]],
+        body: linhas.map((l) => [l.localizacoes?.nome ?? "—", l.artigos?.designacao ?? "—", l.numero_lote, `${l.quantidade_atual} ${(l.artigos?.unidade ?? "un").toUpperCase()}`]),
+        styles: { fontSize: 10, cellPadding: 3 },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
+    });
+
+    doc.save(`stock_por_zona_${new Date().toISOString().slice(0, 10)}.pdf`);
+});
 
 // --- Rastreabilidade por lote (igual ao do admin) -------------------------
 document.getElementById("btnPesquisarRastreio").addEventListener("click", async () => {
@@ -633,22 +638,19 @@ document.getElementById("btnAdicionarItemInventario").addEventListener("click", 
     carregarItensInventario();
 });
 
-document.getElementById("btnExportarPdfInventario").addEventListener("click", () => {
+document.getElementById("btnExportarPdfInventario").addEventListener("click", async () => {
     if (!itensInventarioActual.length) { toast("Sem itens para exportar.", "erro"); return; }
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Batardas — Apoio à contagem de inventário", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Zona: ${document.getElementById("tituloInventarioActual").textContent} · Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+    const startY = await iniciarPdfComMarca(doc, "Apoio à contagem de inventário", `Zona: ${document.getElementById("tituloInventarioActual").textContent} · Gerado em ${new Date().toLocaleString("pt-PT")}`);
 
     doc.autoTable({
-        startY: 28,
+        startY,
         head: [["Artigo", "Lote", "Esperado", "Encontrado (preencher à mão)"]],
         body: itensInventarioActual.map((i) => [i.artigos?.designacao ?? "—", i.numero_lote, `${i.quantidade_esperada} ${(i.artigos?.unidade ?? "un").toUpperCase()}`, ""]),
         styles: { fontSize: 10, cellPadding: 4 },
-        headStyles: { fillColor: [28, 31, 38] },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
     });
 
     doc.save(`inventario_apoio_${new Date().toISOString().slice(0, 10)}.pdf`);

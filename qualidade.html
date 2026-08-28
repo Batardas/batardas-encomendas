@@ -76,33 +76,25 @@
             <input id="ncAccaoCorrectiva" placeholder="Acção correctiva necessária">
             <input id="ncPrazo" type="date">
         </div>
-        <div class="linha-form">
-            <select id="ncResponsaveis" multiple style="height:90px;"></select>
-            <button class="secundario" id="btnAdicionarNc">Adicionar à lista</button>
-        </div>
-        <p style="font-size:12px; color:var(--ink-suave); margin:-4px 0 0;">Ctrl/Cmd+clique para escolheres mais do que um responsável.</p>
+        <p style="font-size:13px; font-weight:600; margin:16px 0 6px;">Responsáveis (clica em quem quiseres, sem atalhos de teclado)</p>
+        <div id="listaResponsaveisNc" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
+        <button class="secundario" id="btnAdicionarNc">Adicionar à lista</button>
 
         <button id="btnGuardarAuditoria" style="margin-top:16px;">Guardar auditoria</button>
         <p id="erroAuditoria" class="erro"></p>
     </div>
 
-    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
+    <div class="cartao" id="cartaoMinhasNc">
         <h2>Não-conformidades atribuídas a mim</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
-            Quando resolveres, marca "Por confirmar" — a Qualidade recebe um alerta para validar e fechar.
+            Quando resolveres, marca "Por confirmar" — a Qualidade recebe um alerta para validar e fechar. Anexa provas e soluções directamente aqui, incluindo a partir da câmara do telemóvel.
         </p>
-        <table>
-            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
-            <tbody id="corpoMinhasNc"></tbody>
-        </table>
+        <div id="corpoMinhasNc"></div>
     </div>
 
     <div class="cartao" id="cartaoConfirmarNc" style="display:none;">
         <h2>Por confirmar (Qualidade)</h2>
-        <table>
-            <thead><tr><th>Descrição</th><th>Responsável</th><th>Gravidade</th><th>Acção</th></tr></thead>
-            <tbody id="corpoNcConfirmar"></tbody>
-        </table>
+        <div id="corpoNcConfirmar"></div>
     </div>
 
     <div class="cartao">
@@ -161,8 +153,13 @@ async function carregarZonasAuditoria() {
 
 async function carregarResponsaveis() {
     const { data } = await supabaseClient.from("perfis").select("id, nome").order("nome");
-    const select = document.getElementById("ncResponsaveis");
-    select.innerHTML = (data ?? []).map((p) => `<option value="${p.id}">${escaparHtml(p.nome)}</option>`).join("");
+    const container = document.getElementById("listaResponsaveisNc");
+    container.innerHTML = (data ?? []).map((p) =>
+        `<button type="button" class="secundario" data-id="${p.id}">${escaparHtml(p.nome)}</button>`
+    ).join("");
+    container.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", () => btn.classList.toggle("activo"));
+    });
 }
 
 // --- Montar a lista de não-conformidades antes de gravar a auditoria ------
@@ -171,7 +168,7 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     const gravidade = document.getElementById("ncGravidade").value;
     const accaoCorrectiva = document.getElementById("ncAccaoCorrectiva").value.trim();
     const prazo = document.getElementById("ncPrazo").value || null;
-    const responsavelIds = [...document.getElementById("ncResponsaveis").selectedOptions].map((o) => o.value);
+    const responsavelIds = [...document.querySelectorAll("#listaResponsaveisNc button.activo")].map((b) => b.dataset.id);
 
     if (!descricao) { toast("Escreve a descrição da não-conformidade.", "erro"); return; }
 
@@ -181,7 +178,7 @@ document.getElementById("btnAdicionarNc").addEventListener("click", () => {
     document.getElementById("ncDescricao").value = "";
     document.getElementById("ncAccaoCorrectiva").value = "";
     document.getElementById("ncPrazo").value = "";
-    [...document.getElementById("ncResponsaveis").options].forEach((o) => o.selected = false);
+    document.querySelectorAll("#listaResponsaveisNc button.activo").forEach((b) => b.classList.remove("activo"));
 });
 
 function renderizarNcPendentes() {
@@ -245,23 +242,29 @@ document.getElementById("btnGuardarAuditoria").addEventListener("click", async (
 async function carregarNcParaConfirmar() {
     const { data, error } = await supabaseClient
         .from("nao_conformidades")
-        .select("id, descricao, gravidade, nc_responsaveis(perfis(nome))")
+        .select("id, descricao, gravidade, accao_correctiva, prazo, nc_responsaveis(perfis(nome))")
         .eq("estado", "Por confirmar");
     if (error) { console.error(error); return; }
 
     const corpo = document.getElementById("corpoNcConfirmar");
-    corpo.innerHTML = data.length ? "" : `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Nada à espera de confirmação.</td></tr>`;
-    data.forEach((nc) => {
+    corpo.innerHTML = data.length ? "" : `<p style="font-size:13px; color:var(--ink-suave);">Nada à espera de confirmação.</p>`;
+    for (const nc of data) {
         const nomesResponsaveis = (nc.nc_responsaveis ?? []).map((r) => r.perfis?.nome).filter(Boolean).join(", ") || "—";
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td data-rotulo="Descrição">${escaparHtml(nc.descricao)}</td>
-            <td data-rotulo="Responsável">${escaparHtml(nomesResponsaveis)}</td>
-            <td data-rotulo="Gravidade">${escaparHtml(nc.gravidade)}</td>
-            <td data-rotulo="Acção"><button onclick="confirmarNcResolvida('${nc.id}')">Confirmar resolvida</button></td>
+        const div = document.createElement("div");
+        div.style.cssText = "border:1px solid var(--linha); border-radius:var(--raio-peq); padding:14px; margin-bottom:12px;";
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                <div>
+                    <strong>${escaparHtml(nc.descricao)}</strong>
+                    <p style="font-size:12px; color:var(--ink-suave); margin:2px 0 0;">Responsável: ${escaparHtml(nomesResponsaveis)} · ${escaparHtml(nc.gravidade)}</p>
+                </div>
+                <button onclick="confirmarNcResolvida('${nc.id}')">Confirmar resolvida</button>
+            </div>
+            <div id="anexos-nc-${nc.id}" style="margin-top:10px;"></div>
         `;
-        corpo.appendChild(tr);
-    });
+        corpo.appendChild(div);
+        renderizarAnexosNc(nc.id, div.querySelector(`#anexos-nc-${nc.id}`));
+    }
 }
 
 async function confirmarNcResolvida(ncId) {

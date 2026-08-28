@@ -20,6 +20,7 @@
     <button class="nav-item" data-secao="plano"><i class="ti ti-calendar-week" aria-hidden="true"></i> Plano de produção</button>
     <button class="nav-item" data-secao="pedidos"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Pedidos ao armazém</button>
     <button class="nav-item" data-secao="movimentos"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Movimentos de stock</button>
+    <button class="nav-item" data-secao="qualidade"><i class="ti ti-clipboard-check" aria-hidden="true"></i> Qualidade</button>
 </nav>
 
 <div class="conteudo-admin">
@@ -37,14 +38,6 @@
 
 <main>
 <section class="painel activo" data-secao="encomendas">
-    <div class="cartao" id="cartaoMinhasNc" style="display:none;">
-        <h2>Não-conformidades atribuídas a mim</h2>
-        <table>
-            <thead><tr><th>Descrição</th><th>Gravidade</th><th>Prazo</th><th>Estado</th><th>Acção</th></tr></thead>
-            <tbody id="corpoMinhasNc"></tbody>
-        </table>
-    </div>
-
     <div class="filtros">
         <button data-estado="todos" class="filtro-activo">Todas</button>
         <button data-estado="Registada">Registadas</button>
@@ -197,6 +190,16 @@
             <button id="btnMovimento"><i class="ti ti-device-floppy" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Registar</button>
         </div>
         <p id="erroMovimento" class="erro"></p>
+    </div>
+</section>
+
+<section class="painel" data-secao="qualidade">
+    <div class="cartao" id="cartaoMinhasNc">
+        <h2>Não-conformidades atribuídas a mim</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Anexa provas e soluções (foto ou documento) directamente aqui — inclui a partir da câmara do telemóvel.
+        </p>
+        <div id="corpoMinhasNc"></div>
     </div>
 </section>
 </main>
@@ -718,23 +721,20 @@ async function recalcularNecessidades() {
     });
 }
 
-document.getElementById("btnExportarNecessidades").addEventListener("click", () => {
+document.getElementById("btnExportarNecessidades").addEventListener("click", async () => {
     if (!ultimasNecessidades.length) { toast("Nada para exportar ainda.", "erro"); return; }
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const dataPlano = document.getElementById("ppData").value;
-    doc.setFontSize(16);
-    doc.text("Batardas — Matérias-primas necessárias", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Plano de produção de ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`, 14, 22);
+    const startY = await iniciarPdfComMarca(doc, "Matérias-primas necessárias", `Plano de produção de ${formatarData(dataPlano)} · Gerado em ${new Date().toLocaleString("pt-PT")}`);
 
     doc.autoTable({
-        startY: 28,
+        startY,
         head: [["Matéria-prima", "Necessário", "Stock actual", "Em falta"]],
         body: ultimasNecessidades.map((n) => [n.designacao, n.necessario.toFixed(2), n.stock.toFixed(2), n.em_falta > 0 ? n.em_falta.toFixed(2) : "—"]),
         styles: { fontSize: 10, cellPadding: 3 },
-        headStyles: { fillColor: [28, 31, 38] },
+        headStyles: ESTILO_CABECALHO_TABELA_PDF,
         didParseCell: (dados) => {
             if (dados.column.index === 3 && dados.cell.raw !== "—") {
                 dados.cell.styles.textColor = [188, 32, 46];
@@ -760,7 +760,7 @@ document.getElementById("btnPedirEmFalta").addEventListener("click", async () =>
 
 const TITULOS_SECAO = {
     encomendas: "Encomendas", producao: "Produção diária", plano: "Plano de produção",
-    pedidos: "Pedidos ao armazém", movimentos: "Movimentos de stock",
+    pedidos: "Pedidos ao armazém", movimentos: "Movimentos de stock", qualidade: "Qualidade",
 };
 
 function mudarSecao(secao) {
