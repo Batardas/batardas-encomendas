@@ -520,9 +520,9 @@
 
 <section class="painel" data-secao="importar">
     <div class="cartao">
-        <h2>Importar artigos do Primavera</h2>
+        <h2>1. Importar artigos do Primavera (catálogo)</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
-            Aceita directamente a exportação do Primavera (colunas "Artigo", "Descrição", "Unidade Base", "Stock Atual", "Preço Custo Médio"...) — não precisas de converter nada antes. Linhas repetidas do mesmo artigo (um lote físico por linha) são juntas automaticamente. Se o stock do Primavera vier diferente do que já está no site, a diferença entra como um movimento de ajuste (com data e motivo), não reescreve o número por cima — assim nunca apagas em silêncio movimentos que já tenhas registado.
+            Aceita a exportação do Primavera (colunas "Artigo", "Descrição", "Unidade Base"...) — cria/actualiza só o catálogo (nome, unidade). <strong>Não mexe em stock</strong> — isso é o importador a seguir, "Lotes de stock", que tem dados mais precisos (por lote real). Corre este primeiro, os artigos têm de existir antes dos lotes.
         </p>
         <div class="linha-form">
             <input type="file" id="impArtigosFicheiro" accept=".csv">
@@ -532,9 +532,21 @@
     </div>
 
     <div class="cartao">
-        <h2>Importar clientes</h2>
+        <h2>2. Importar lotes de stock (por lote real)</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
-            Ficheiro CSV separado por ponto e vírgula, com colunas <code class="mono">Nome;Contacto</code> (Contacto é opcional). Clientes cujo nome já exista são ignorados, para não duplicar.
+            Aceita o export "Stocks" do Primavera (colunas "Artigo", "Armazém", "Localização", "Lote", "Stock", "Custo"...). Cria uma zona de armazém por cada "Armazém"/"Localização" que ainda não exista. Artigos sem número de lote real (Primavera mostra "0" ou vazio) ficam agrupados num lote "SEM-LOTE". Se um lote já existir e a quantidade vier diferente, ajusta por movimento (não reescreve por cima) — tal como o importador de artigos fazia antes.
+        </p>
+        <div class="linha-form">
+            <input type="file" id="impLotesFicheiro" accept=".csv">
+            <button id="btnImportarLotes">Importar</button>
+        </div>
+        <div id="resultadoImportLotes" style="font-size:13px; margin-top:10px;"></div>
+    </div>
+
+    <div class="cartao">
+        <h2>3. Importar clientes</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Aceita tanto o export do Primavera (colunas "Nome", "Telefone"...) como um CSV simples (<code class="mono">Nome;Contacto</code>). Clientes cujo nome já exista são ignorados, para não duplicar.
         </p>
         <div class="linha-form">
             <input type="file" id="impClientesFicheiro" accept=".csv">
@@ -544,9 +556,9 @@
     </div>
 
     <div class="cartao">
-        <h2>Importar preços de contrato</h2>
+        <h2>4. Importar preços de contrato</h2>
         <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
-            Ficheiro CSV com colunas <code class="mono">Cliente;ReferenciaArtigo;Preco</code> — o cliente e o artigo têm de já existir (nome exacto do cliente, referência exacta do Primavera). Se já houver preço para esse par cliente/artigo, é actualizado.
+            Aceita o export de preços do Primavera directamente, ou um CSV simples com colunas <code class="mono">Cliente;ReferenciaArtigo;Preco</code>. O cliente e o artigo têm de já existir (importa-os primeiro). Se já houver preço para esse par cliente/artigo, é actualizado.
         </p>
         <div class="linha-form">
             <input type="file" id="impPrecosFicheiro" accept=".csv">
@@ -1957,11 +1969,11 @@ document.getElementById("btnImportarArtigos").addEventListener("click", async ()
 
     const linhas = parseCsv(await lerFicheiroLatin1(ficheiro));
     const vistos = new Set();
-    let processados = 0, repetidos = 0, comCusto = 0, ajustados = 0;
+    let processados = 0, repetidos = 0, comCusto = 0;
     const erros = [];
 
     for (const linha of linhas) {
-        // Aceita tanto o export bruto do Primavera como o formato já
+        // Aceita vários formatos de export do Primavera, e o formato já
         // convertido (Referencia;Designacao;...) — o que estiver preenchido.
         const ref = (linha["Artigo"] || linha["Referencia"] || "").trim();
         if (!ref) continue;
@@ -1970,16 +1982,10 @@ document.getElementById("btnImportarArtigos").addEventListener("click", async ()
 
         const designacao = (linha["Descrição"] || linha["Designacao"] || "").trim();
         const unidade = (linha["Unidade Base"] || linha["Unidade"] || "un").trim() || "un";
-        const stockTexto = String(linha["Stock Atual"] ?? linha["QuantidadeAtual"] ?? "0").replace(",", ".").trim();
-        const quantidadePrimavera = parseFloat(stockTexto) || 0;
         let custoTexto = String(linha["Preço Custo Médio"] ?? linha["CustoUnitario"] ?? "").replace(",", ".").trim();
         let custo = custoTexto ? parseFloat(custoTexto) : null;
         if (custo === 0) custo = null; // 0 = "por preencher", não custo real (ver conversa sobre isto)
 
-        if (quantidadePrimavera < 0) {
-            erros.push(`${ref} (${designacao}): stock negativo (${quantidadePrimavera}) — ignorado, corrige no Primavera e reimporta.`);
-            continue;
-        }
         if (!designacao) {
             erros.push(`${ref}: sem designação, ignorado.`);
             continue;
@@ -2000,56 +2006,134 @@ document.getElementById("btnImportarArtigos").addEventListener("click", async ()
             comCusto++;
         }
 
-        // Compara o stock do Primavera com o que já temos e ajusta a
-        // diferença como um MOVIMENTO (não reescreve o número por cima) —
-        // assim, se entretanto já tiveres registado saídas/entradas no
-        // site que o Primavera ainda não reflicta, ficam à mesma visíveis
-        // no histórico, em vez de desaparecerem silenciosamente.
-        const { data: lotes } = await supabaseClient
-            .from("lotes_artigo").select("lote_artigo_id, numero_lote, quantidade_atual")
-            .eq("artigo_id", artigo.artigo_id);
+        processados++;
+    }
 
-        let loteInicial = (lotes ?? []).find((l) => l.numero_lote === "INICIAL");
-        if (!loteInicial) {
-            const { data: novoLote } = await supabaseClient
-                .from("lotes_artigo")
-                .insert({ artigo_id: artigo.artigo_id, numero_lote: "INICIAL", quantidade_atual: 0 })
-                .select("lote_artigo_id, numero_lote, quantidade_atual")
-                .single();
-            loteInicial = novoLote;
+    _cacheArtigos = null; // refresca as pesquisas de artigo com os novos/actualizados
+    resultadoEl.innerHTML = `
+        <p>${processados} artigos processados (catálogo apenas — usa "Lotes de stock" para quantidades). ${comCusto} com custo preenchido. ${repetidos} linha(s) repetida(s) do mesmo artigo ignoradas.</p>
+        ${erros.length ? `<p style="color:var(--perigo); margin-top:8px;">${erros.length} aviso(s):<br>${erros.map(escaparHtml).join("<br>")}</p>` : ""}
+    `;
+    document.getElementById("impArtigosFicheiro").value = "";
+    carregarLotes();
+    carregarMovimentosStock();
+});
+
+document.getElementById("btnImportarLotes").addEventListener("click", async () => {
+    const ficheiro = document.getElementById("impLotesFicheiro").files[0];
+    const resultadoEl = document.getElementById("resultadoImportLotes");
+    if (!ficheiro) { resultadoEl.textContent = "Escolhe um ficheiro primeiro."; return; }
+    resultadoEl.textContent = "A processar...";
+
+    const linhas = parseCsv(await lerFicheiroLatin1(ficheiro));
+    let processados = 0, ajustados = 0, zonasCriadas = 0, comCusto = 0;
+    const erros = [];
+    const cacheArtigoPorRef = {};
+    const cacheLocalizacaoPorNome = {};
+    const custosAcumulados = {}; // artigo_id -> {somaValor, somaQtd} para média ponderada
+
+    for (const linha of linhas) {
+        const ref = (linha["Artigo"] || "").trim();
+        if (!ref) continue;
+
+        let artigoId = cacheArtigoPorRef[ref];
+        if (artigoId === undefined) {
+            const { data: artigo } = await supabaseClient.from("artigos").select("artigo_id").eq("ref_primavera", ref).maybeSingle();
+            artigoId = artigo?.artigo_id ?? null;
+            cacheArtigoPorRef[ref] = artigoId;
+        }
+        if (!artigoId) {
+            erros.push(`${ref}: artigo não encontrado — importa primeiro o catálogo de artigos.`);
+            continue;
         }
 
-        const stockActual = (lotes ?? []).reduce((soma, l) => soma + Number(l.quantidade_atual), 0);
-        const diferenca = Math.round((quantidadePrimavera - stockActual) * 10000) / 10000;
+        const nomeZona = (linha["Armazém"] || linha["Localização"] || "").trim();
+        let localizacaoId = null;
+        if (nomeZona) {
+            localizacaoId = cacheLocalizacaoPorNome[nomeZona];
+            if (localizacaoId === undefined) {
+                const { data: zonaExistente } = await supabaseClient.from("localizacoes").select("localizacao_id").eq("nome", nomeZona).maybeSingle();
+                if (zonaExistente) {
+                    localizacaoId = zonaExistente.localizacao_id;
+                } else {
+                    const { data: zonaNova, error: erroZona } = await supabaseClient
+                        .from("localizacoes").insert({ nome: nomeZona }).select("localizacao_id").single();
+                    if (erroZona) { erros.push(`Zona "${nomeZona}": ${erroZona.message}`); localizacaoId = null; }
+                    else { localizacaoId = zonaNova.localizacao_id; zonasCriadas++; }
+                }
+                cacheLocalizacaoPorNome[nomeZona] = localizacaoId;
+            }
+        }
 
-        if (diferenca !== 0) {
-            const { error: erroAjuste } = await supabaseClient.from("movimentos_stock").insert({
-                tipo: diferenca > 0 ? "Entrada" : "Saída",
-                lote_artigo_id: loteInicial.lote_artigo_id,
-                unidade_movimentacao: "un",
-                quantidade: Math.abs(diferenca),
-                estado: "Registado",
-                data_registo: new Date().toISOString(),
-                observacoes: `Ajuste da importação Primavera em ${new Date().toLocaleDateString("pt-PT")} (era ${stockActual}, passou a ${quantidadePrimavera})`,
+        const numeroLotePrimavera = (linha["Lote"] || "").trim();
+        const numeroLote = (!numeroLotePrimavera || numeroLotePrimavera === "0") ? "SEM-LOTE" : numeroLotePrimavera;
+        const quantidadeCsv = parseFloat(String(linha["Stock"] || "0").replace(",", ".")) || 0;
+        const custoTexto = String(linha["Custo"] || "").replace(",", ".").trim();
+        const custo = custoTexto ? parseFloat(custoTexto) : 0;
+
+        if (quantidadeCsv < 0) {
+            erros.push(`${ref} lote ${numeroLote}: stock negativo (${quantidadeCsv}) — ignorado.`);
+            continue;
+        }
+
+        if (custo > 0) {
+            if (!custosAcumulados[artigoId]) custosAcumulados[artigoId] = { somaValor: 0, somaQtd: 0 };
+            custosAcumulados[artigoId].somaValor += custo * quantidadeCsv;
+            custosAcumulados[artigoId].somaQtd += quantidadeCsv;
+        }
+
+        // Um lote+artigo pode aparecer em mais do que uma linha (ex. armazéns
+        // diferentes) — soma-se a quantidade em vez de sobrepor.
+        const { data: loteExistente } = await supabaseClient
+            .from("lotes_artigo").select("lote_artigo_id, quantidade_atual")
+            .eq("artigo_id", artigoId).eq("numero_lote", numeroLote).maybeSingle();
+
+        if (!loteExistente) {
+            const { error: erroCriar } = await supabaseClient.from("lotes_artigo").insert({
+                artigo_id: artigoId, numero_lote: numeroLote, quantidade_atual: quantidadeCsv, localizacao_id: localizacaoId,
             });
-            if (erroAjuste) {
-                erros.push(`${ref}: stock não pôde ser ajustado — ${traduzirErro(erroAjuste.message)}`);
-            } else {
+            if (erroCriar) { erros.push(`${ref} lote ${numeroLote}: ${erroCriar.message}`); continue; }
+        } else {
+            const diferenca = Math.round((quantidadeCsv - Number(loteExistente.quantidade_atual)) * 10000) / 10000;
+            if (diferenca !== 0) {
+                const { error: erroAjuste } = await supabaseClient.from("movimentos_stock").insert({
+                    tipo: diferenca > 0 ? "Entrada" : "Saída",
+                    lote_artigo_id: loteExistente.lote_artigo_id,
+                    unidade_movimentacao: "un",
+                    quantidade: Math.abs(diferenca),
+                    estado: "Registado",
+                    data_registo: new Date().toISOString(),
+                    observacoes: `Ajuste da importação de lotes Primavera em ${new Date().toLocaleDateString("pt-PT")}`,
+                });
+                if (erroAjuste) { erros.push(`${ref} lote ${numeroLote}: ${traduzirErro(erroAjuste.message)}`); continue; }
                 ajustados++;
+            }
+            if (localizacaoId) {
+                await supabaseClient.from("lotes_artigo").update({ localizacao_id: localizacaoId }).eq("lote_artigo_id", loteExistente.lote_artigo_id);
             }
         }
 
         processados++;
     }
 
-    _cacheArtigos = null; // refresca as pesquisas de artigo com os novos/actualizados
+    // Custo médio ponderado por artigo, a partir de todos os lotes deste ficheiro
+    for (const [artigoId, { somaValor, somaQtd }] of Object.entries(custosAcumulados)) {
+        if (somaQtd <= 0) continue;
+        await supabaseClient.from("custos_artigo").upsert(
+            { artigo_id: artigoId, custo_unitario: somaValor / somaQtd },
+            { onConflict: "artigo_id" }
+        );
+        comCusto++;
+    }
+
     resultadoEl.innerHTML = `
-        <p>${processados} artigos processados. ${comCusto} com custo preenchido. ${ajustados} com stock ajustado por diferença. ${repetidos} linha(s) repetida(s) do mesmo artigo ignoradas.</p>
+        <p>${processados} lote(s) processado(s). ${zonasCriadas} zona(s) de armazém criada(s). ${ajustados} lote(s) com stock ajustado. ${comCusto} artigo(s) com custo actualizado.</p>
         ${erros.length ? `<p style="color:var(--perigo); margin-top:8px;">${erros.length} aviso(s):<br>${erros.map(escaparHtml).join("<br>")}</p>` : ""}
     `;
-    document.getElementById("impArtigosFicheiro").value = "";
+    document.getElementById("impLotesFicheiro").value = "";
     carregarLotes();
     carregarMovimentosStock();
+    carregarZonas();
 });
 
 document.getElementById("btnImportarClientes").addEventListener("click", async () => {
@@ -2058,14 +2142,14 @@ document.getElementById("btnImportarClientes").addEventListener("click", async (
     if (!ficheiro) { resultadoEl.textContent = "Escolhe um ficheiro primeiro."; return; }
     resultadoEl.textContent = "A processar...";
 
-    const linhas = parseCsv(await ficheiro.text());
+    const linhas = parseCsv(await lerFicheiroLatin1(ficheiro));
     let criados = 0, existentes = 0;
     const erros = [];
 
     for (const linha of linhas) {
         const nome = (linha["Nome"] || "").trim();
         if (!nome) continue;
-        const contacto = (linha["Contacto"] || "").trim() || null;
+        const contacto = (linha["Contacto"] || linha["Telefone"] || "").trim() || null;
 
         const { data: jaExiste } = await supabaseClient.from("clientes").select("cliente_id").eq("nome", nome).maybeSingle();
         if (jaExiste) { existentes++; continue; }
@@ -2088,24 +2172,59 @@ document.getElementById("btnImportarPrecos").addEventListener("click", async () 
     if (!ficheiro) { resultadoEl.textContent = "Escolhe um ficheiro primeiro."; return; }
     resultadoEl.textContent = "A processar...";
 
-    const linhas = parseCsv(await ficheiro.text());
+    const texto = await lerFicheiroLatin1(ficheiro);
+    const primeiraLinha = texto.split("\n")[0];
+    const ehExportPrimavera = primeiraLinha.includes("Preço Liq.") || primeiraLinha.includes("Preço Unit.");
+
+    let pares; // [{ nomeCliente, refArtigo, preco }]
+    if (ehExportPrimavera) {
+        // Export de preços do Primavera — tem colunas "Descrição" e "IVA"
+        // repetidas, por isso não se pode usar o cabeçalho como chave (o
+        // parser só guardaria a última). Localiza-se cada coluna pela
+        // posição, a partir do cabeçalho real deste ficheiro.
+        const linhasBrutas = Papa.parse(texto, { delimiter: ";", skipEmptyLines: true }).data;
+        const cabecalho = linhasBrutas[0];
+        const idxCliente = cabecalho.indexOf("Cliente");
+        const idxNomeCliente = idxCliente + 1; // a descrição vem sempre logo a seguir ao código
+        const idxArtigo = cabecalho.indexOf("Artigo");
+        const idxPreco = cabecalho.indexOf("Preço Liq.") !== -1 ? cabecalho.indexOf("Preço Liq.") : cabecalho.indexOf("Preço Unit.");
+
+        pares = linhasBrutas.slice(1).map((colunas) => ({
+            nomeCliente: (colunas[idxNomeCliente] || "").trim(),
+            refArtigo: (colunas[idxArtigo] || "").trim(),
+            preco: String(colunas[idxPreco] || "").replace(",", ".").trim(),
+        }));
+    } else {
+        // Formato simples: Cliente;ReferenciaArtigo;Preco
+        pares = parseCsv(texto).map((linha) => ({
+            nomeCliente: (linha["Cliente"] || "").trim(),
+            refArtigo: (linha["ReferenciaArtigo"] || "").trim(),
+            preco: String(linha["Preco"] || "").replace(",", ".").trim(),
+        }));
+    }
+
     let processados = 0;
     const erros = [];
+    const cacheClientes = {};
+    const cacheArtigos = {};
 
-    for (const linha of linhas) {
-        const nomeCliente = (linha["Cliente"] || "").trim();
-        const refArtigo = (linha["ReferenciaArtigo"] || "").trim();
-        const precoTexto = String(linha["Preco"] || "").replace(",", ".").trim();
-        if (!nomeCliente || !refArtigo || !precoTexto) continue;
+    for (const { nomeCliente, refArtigo, preco } of pares) {
+        if (!nomeCliente || !refArtigo || !preco) continue;
 
-        const { data: cliente } = await supabaseClient.from("clientes").select("cliente_id").eq("nome", nomeCliente).maybeSingle();
-        if (!cliente) { erros.push(`Cliente "${nomeCliente}" não encontrado — cria-o primeiro.`); continue; }
+        if (cacheClientes[nomeCliente] === undefined) {
+            const { data: cliente } = await supabaseClient.from("clientes").select("cliente_id").eq("nome", nomeCliente).maybeSingle();
+            cacheClientes[nomeCliente] = cliente?.cliente_id ?? null;
+        }
+        if (!cacheClientes[nomeCliente]) { erros.push(`Cliente "${nomeCliente}" não encontrado — importa os clientes primeiro.`); continue; }
 
-        const { data: artigo } = await supabaseClient.from("artigos").select("artigo_id").eq("ref_primavera", refArtigo).maybeSingle();
-        if (!artigo) { erros.push(`Artigo "${refArtigo}" não encontrado.`); continue; }
+        if (cacheArtigos[refArtigo] === undefined) {
+            const { data: artigo } = await supabaseClient.from("artigos").select("artigo_id").eq("ref_primavera", refArtigo).maybeSingle();
+            cacheArtigos[refArtigo] = artigo?.artigo_id ?? null;
+        }
+        if (!cacheArtigos[refArtigo]) { erros.push(`Artigo "${refArtigo}" não encontrado — importa o catálogo primeiro.`); continue; }
 
         const { error } = await supabaseClient.from("precos_cliente").upsert(
-            { cliente_id: cliente.cliente_id, artigo_id: artigo.artigo_id, preco_unitario: parseFloat(precoTexto) },
+            { cliente_id: cacheClientes[nomeCliente], artigo_id: cacheArtigos[refArtigo], preco_unitario: parseFloat(preco) },
             { onConflict: "cliente_id,artigo_id" }
         );
         if (error) { erros.push(`${nomeCliente} / ${refArtigo}: ${error.message}`); continue; }
