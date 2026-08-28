@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <link rel="icon" href="img/logo.png" type="image/png">
 <link rel="stylesheet" href="css/style.css">
@@ -17,6 +18,7 @@
 <nav class="barra-lateral">
     <div class="marca"><img class="logo" src="img/logo.png" alt="Batardas" style="cursor:pointer;" onclick="irParaInicio()"></div>
     <button class="nav-item activo" data-secao="encomendas"><i class="ti ti-package" aria-hidden="true"></i> Encomendas</button>
+    <button class="nav-item" data-secao="artigos"><i class="ti ti-list-search" aria-hidden="true"></i> Artigos</button>
     <button class="nav-item" data-secao="producao"><i class="ti ti-stack-2" aria-hidden="true"></i> Produção &amp; Lotes</button>
     <button class="nav-item" data-secao="bom"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Receitas (BOM)</button>
     <button class="nav-item" data-secao="stock"><i class="ti ti-building-warehouse" aria-hidden="true"></i> Stock &amp; Armazém <span class="contador" id="contadorStock" style="display:none;"></span></button>
@@ -39,6 +41,10 @@
     <h1 id="tituloSecao">Encomendas</h1>
     <div>
         <span class="utilizador" id="nomeUtilizador"></span>
+        <span class="bloco-sino">
+            <button id="botaoSino" onclick="alternarPainelAlertas()" aria-label="Notificações"><i class="ti ti-bell" style="font-size:19px; vertical-align:-4px;" aria-hidden="true"></i><span id="badgeAlertasSino"></span></button>
+            <div id="painelAlertas"></div>
+        </span>
         <span id="badgeAlertas" style="display:none; background:var(--perigo); color:white; font-size:12px; font-weight:600; padding:3px 9px; border-radius:999px; margin-right:12px;"></span>
         <button class="secundario" onclick="terminarSessao()">Sair</button>
     </div>
@@ -97,6 +103,20 @@
         <table>
             <thead><tr><th>Cliente</th><th>Entrega</th><th>Estado</th></tr></thead>
             <tbody id="corpoTodas"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="painel" data-secao="artigos">
+    <div class="cartao">
+        <h2>Artigos</h2>
+        <p style="font-size:13px; color:var(--ink-suave); margin-top:-8px;">
+            Clica num artigo para o carregares na "Lista de artigos e stock", em Produção &amp; Lotes, onde podes editar designação, unidade e conversões.
+        </p>
+        <input id="laFiltro" placeholder="Pesquisar por código ou nome..." style="font-size:16px; padding:14px 16px; margin-bottom:16px;">
+        <table>
+            <thead><tr><th>Referência</th><th>Designação</th><th>Unidade</th><th>Stock total</th></tr></thead>
+            <tbody id="corpoListaArtigos"></tbody>
         </table>
     </div>
 </section>
@@ -206,6 +226,9 @@
                 <input type="hidden" id="uArtigo">
                 <div id="uArtigoResultados" class="lista-sugestoes" style="display:none;"></div>
             </div>
+            <input id="uDesignacao" placeholder="Designação do artigo">
+        </div>
+        <div class="linha-form">
             <select id="uUnidadeBase">
                 <option value="un">UN — unidade inteira (não divisível)</option>
                 <option value="kg">KG — quilogramas (permite fracções)</option>
@@ -213,20 +236,20 @@
                 <option value="l">L — litros</option>
                 <option value="ml">ML — mililitros</option>
             </select>
-        </div>
-        <div class="linha-form">
             <select id="uTipoCaixa">
                 <option value="">Sem caixa definida</option>
                 <option value="Caixa A">Caixa A</option>
                 <option value="Caixa B">Caixa B</option>
             </select>
-            <input id="uPorPack" type="number" min="0" step="0.01" placeholder="Unidades por pack (ex. KG por saco)">
         </div>
         <div class="linha-form">
+            <input id="uPorPack" type="number" min="0" step="0.01" placeholder="Unidades por pack (ex. KG por saco)">
             <input id="uPorCaixa" type="number" min="0" step="0.01" placeholder="Unidades por caixa">
+        </div>
+        <div class="linha-form">
             <input id="uPorPalete" type="number" min="0" step="0.01" placeholder="Unidades por palete">
         </div>
-        <button id="btnGuardarConversoes">Guardar conversões</button>
+        <button id="btnGuardarConversoes">Guardar artigo</button>
         <p id="erroConversoes" class="erro"></p>
     </div>
 
@@ -260,6 +283,10 @@
                     <option value="">Escolhe a matéria-prima primeiro</option>
                 </select>
             </div>
+        </div>
+        <div class="linha-form">
+            <input id="rCusto" type="number" min="0" step="0.0001" placeholder="Custo (€/un) — só para matéria-prima sem custo ainda" style="display:none;">
+            <p id="rCustoExistente" style="font-size:13px; color:var(--ink-suave); margin:8px 0 0; display:none;"></p>
         </div>
         <button id="btnAdicionarLinhaReceita" class="secundario">Adicionar à receita</button>
 
@@ -469,6 +496,10 @@
             "Potencial" é hipotético — assume TODO o stock desse produto vendido a esse cliente ao preço acordado. Não soma entre clientes (o mesmo stock não pode ir para todos ao mesmo tempo).
         </p>
         <p style="font-size:14px; margin:0 0 12px;">Valor total de stock (a custo): <strong id="valorStockTotal">—</strong></p>
+        <div class="linha-form">
+            <select id="pvCliente"><option value="">Todos os clientes</option></select>
+            <button class="secundario" id="btnExportarValorPotencial"><i class="ti ti-file-spreadsheet" style="font-size:14px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar Excel (tabela cruzada)</button>
+        </div>
         <table>
             <thead><tr><th>Cliente</th><th>Produto</th><th>Stock disponível</th><th>Preço/un</th><th>Valor potencial</th></tr></thead>
             <tbody id="corpoValorPotencial"></tbody>
@@ -582,6 +613,7 @@ async function iniciar() {
     const contexto = await exigirRole(["admin"]);
     if (!contexto) return;
     document.getElementById("nomeUtilizador").textContent = contexto.perfil.nome;
+    await inicializarAlertas();
     await carregar();
 
     supabaseClient
@@ -595,6 +627,7 @@ async function iniciar() {
     await atualizarBadgeAlertas();
     await carregarEncomendasParaAtribuicao();
     await carregarLotes();
+    await carregarListaArtigos();
     await activarPesquisasDeArtigo();
     await carregarPlaneamentoSemanal();
     await carregarPlanoDoDiaAdmin();
@@ -1120,7 +1153,7 @@ async function carregarMovimentosStock() {
         .from("movimentos_stock")
         .select(`
             movimento_id, tipo, quantidade, unidade_movimentacao, estado, data_movimento, observacoes,
-            lotes_artigo!movimentos_stock_lote_artigo_id_fkey(numero_lote, artigos(designacao)),
+            lotes_artigo!movimentos_stock_lote_artigo_id_fkey(numero_lote, artigos(designacao, unidade)),
             perfis!movimentos_stock_responsavel_fkey(nome)
         `)
         .order("data_movimento", { ascending: false })
@@ -1132,21 +1165,79 @@ async function carregarMovimentosStock() {
         `<tr><td colspan="6" style="text-align:center; color:var(--ink-suave);">Sem movimentos ainda.</td></tr>`;
     data.forEach((m) => {
         const artigoLote = m.lotes_artigo ? `${escaparHtml(m.lotes_artigo.artigos?.designacao ?? "—")} · lote ${escaparHtml(m.lotes_artigo.numero_lote)}` : "—";
-        const acao = m.estado === "Pendente"
-            ? `<button onclick="marcarMovimentoRegistado('${m.movimento_id}')">Marcar registado</button>`
+        // "un" no movimento significa "na unidade base do artigo" — mostra
+        // essa unidade (kg, l, etc.) em vez de escrever sempre "un" à letra,
+        // que confundia (ex. "167 un" de frango, quando é 167 kg).
+        const unidadeBaseArtigo = (m.lotes_artigo?.artigos?.unidade || "un").toUpperCase();
+        const unidadeMostrada = m.unidade_movimentacao === "un" ? unidadeBaseArtigo : m.unidade_movimentacao;
+        const ehPendente = m.estado === "Pendente";
+        const acao = ehPendente
+            ? `<button onclick="marcarMovimentoRegistado('${m.movimento_id}')">Marcar registado</button>
+               <button class="secundario" style="margin-top:4px;" onclick="activarEdicaoMovimento('${m.movimento_id}')">Editar</button>`
             : `<span class="badge Carregada">Registado</span>`;
         const tr = document.createElement("tr");
+        tr.id = `linha-mov-${m.movimento_id}`;
         tr.style.opacity = m.estado === "Registado" ? "0.6" : "1";
         tr.innerHTML = `
             <td data-rotulo="Tipo">${m.tipo}</td>
             <td data-rotulo="Quem">${escaparHtml(m.perfis?.nome ?? "—")}</td>
             <td data-rotulo="Artigo / Lote">${artigoLote}${m.observacoes ? `<br><span style="font-size:12px; color:var(--ink-suave);">${escaparHtml(m.observacoes)}</span>` : ""}</td>
-            <td data-rotulo="Quantidade">${m.quantidade} ${m.unidade_movimentacao}</td>
+            <td data-rotulo="Quantidade" id="qtd-mov-${m.movimento_id}">
+                <span class="valor-mostrado">${m.quantidade} ${escaparHtml(unidadeMostrada)}</span>
+            </td>
             <td data-rotulo="Data">${formatarData(m.data_movimento)}</td>
-            <td data-rotulo="Acção">${acao}</td>
+            <td data-rotulo="Acção" id="acao-mov-${m.movimento_id}">${acao}</td>
         `;
+        tr.dataset.quantidade = m.quantidade;
+        tr.dataset.unidade = m.unidade_movimentacao;
+        tr.dataset.unidadeBase = unidadeBaseArtigo;
+        tr.dataset.ehPendente = ehPendente;
         corpo.appendChild(tr);
     });
+}
+
+/** Troca a célula de quantidade por um formulário editável — só chamado
+ *  para movimentos ainda "Pendente" (o próprio botão só existe nesse
+ *  caso, e o trigger do lado do servidor bloqueia à mesma se tentares
+ *  editar um já registado). */
+function activarEdicaoMovimento(movimentoId) {
+    const linha = document.getElementById(`linha-mov-${movimentoId}`);
+    const quantidadeActual = linha.dataset.quantidade;
+    const unidadeActual = linha.dataset.unidade;
+    const unidadeBase = linha.dataset.unidadeBase;
+
+    document.getElementById(`qtd-mov-${movimentoId}`).innerHTML = `
+        <input type="number" min="0.0001" step="0.0001" id="edQtd-${movimentoId}" value="${quantidadeActual}" style="width:90px; display:inline-block;">
+        <select id="edUnidade-${movimentoId}" style="width:auto; display:inline-block;">
+            <option value="un">${escaparHtml(unidadeBase)}</option>
+            <option value="pack">Pack</option>
+            <option value="caixa">Caixa</option>
+            <option value="palete">Palete</option>
+        </select>
+    `;
+    document.getElementById(`edUnidade-${movimentoId}`).value = unidadeActual;
+
+    document.getElementById(`acao-mov-${movimentoId}`).innerHTML = `
+        <button onclick="guardarEdicaoMovimento('${movimentoId}')">Guardar</button>
+        <button class="secundario" style="margin-top:4px;" onclick="carregarMovimentosStock()">Cancelar</button>
+    `;
+}
+
+async function guardarEdicaoMovimento(movimentoId) {
+    const novaQuantidade = Number(document.getElementById(`edQtd-${movimentoId}`).value);
+    const novaUnidade = document.getElementById(`edUnidade-${movimentoId}`).value;
+    if (!novaQuantidade || novaQuantidade <= 0) { toast("Escreve uma quantidade válida.", "erro"); return; }
+
+    const { error } = await supabaseClient
+        .from("movimentos_stock")
+        .update({ quantidade: novaQuantidade, unidade_movimentacao: novaUnidade })
+        .eq("movimento_id", movimentoId);
+    if (error) { toast("Erro ao guardar: " + traduzirErro(error.message), "erro"); return; }
+
+    toast("Movimento actualizado — stock recalculado.", "sucesso");
+    carregarMovimentosStock();
+    carregarLotes();
+    carregarLotesArtigoAdmin();
 }
 
 async function marcarMovimentoRegistado(movimentoId) {
@@ -1157,8 +1248,13 @@ async function marcarMovimentoRegistado(movimentoId) {
         .update({ estado: "Registado", registado_por: session.user.id, data_registo: new Date().toISOString() })
         .eq("movimento_id", movimentoId);
     if (error) { toast("Erro ao marcar: " + error.message, "erro"); return; }
+    // Marca também o alerta correspondente como lido — sem isto, o
+    // contador do sino ficava errado sempre que resolvesses isto por
+    // aqui em vez de clicares no próprio alerta.
+    await supabaseClient.from("alertas").update({ lido: true }).eq("link_id", movimentoId).eq("tipo", "movimento_stock");
     carregarMovimentosStock();
     atualizarBadgeAlertas();
+    actualizarContadorAlertas();
     toast("Movimento marcado como registado no Primavera.", "sucesso");
 }
 
@@ -1569,21 +1665,40 @@ async function carregarConversoesExistentes(artigoId) {
     document.getElementById("uPorPalete").value = data.unidades_por_palete ?? "";
 }
 
+async function carregarConversoesExistentes(artigoId) {
+    if (!artigoId) return;
+    const { data } = await supabaseClient
+        .from("artigos")
+        .select("designacao, unidade, tipo_caixa, unidades_por_pack, unidades_por_caixa, unidades_por_palete")
+        .eq("artigo_id", artigoId)
+        .maybeSingle();
+    if (!data) return;
+    document.getElementById("uDesignacao").value = data.designacao ?? "";
+    document.getElementById("uUnidadeBase").value = (data.unidade ?? "un").toLowerCase();
+    document.getElementById("uTipoCaixa").value = data.tipo_caixa ?? "";
+    document.getElementById("uPorPack").value = data.unidades_por_pack ?? "";
+    document.getElementById("uPorCaixa").value = data.unidades_por_caixa ?? "";
+    document.getElementById("uPorPalete").value = data.unidades_por_palete ?? "";
+}
+
 document.getElementById("btnGuardarConversoes").addEventListener("click", async () => {
     const erroEl = document.getElementById("erroConversoes");
     erroEl.textContent = "";
     const artigoId = document.getElementById("uArtigo").value;
     if (!artigoId) { erroEl.textContent = "Escolhe o artigo."; return; }
 
+    const designacao = document.getElementById("uDesignacao").value.trim();
     const unidadeBase = document.getElementById("uUnidadeBase").value;
     const tipoCaixa = document.getElementById("uTipoCaixa").value || null;
     const porPack = document.getElementById("uPorPack").value;
     const porCaixa = document.getElementById("uPorCaixa").value;
     const porPalete = document.getElementById("uPorPalete").value;
+    if (!designacao) { erroEl.textContent = "A designação não pode ficar vazia."; return; }
 
     const { error } = await supabaseClient
         .from("artigos")
         .update({
+            designacao,
             unidade: unidadeBase,
             tipo_caixa: tipoCaixa,
             unidades_por_pack: porPack === "" ? null : Number(porPack),
@@ -1593,15 +1708,70 @@ document.getElementById("btnGuardarConversoes").addEventListener("click", async 
         .eq("artigo_id", artigoId);
     if (error) { erroEl.textContent = "Erro ao guardar: " + error.message; return; }
 
-    toast("Conversões actualizadas.", "sucesso");
+    toast("Artigo actualizado.", "sucesso");
     document.getElementById("uArtigoTexto").value = "";
     document.getElementById("uArtigo").value = "";
+    document.getElementById("uDesignacao").value = "";
     document.getElementById("uUnidadeBase").value = "un";
     document.getElementById("uTipoCaixa").value = "";
     document.getElementById("uPorPack").value = "";
     document.getElementById("uPorCaixa").value = "";
     document.getElementById("uPorPalete").value = "";
+    _cacheArtigos = null; // refresca as pesquisas de artigo com a designação nova
+    carregarListaArtigos();
 });
+
+let todosArtigosComStock = [];
+
+async function carregarListaArtigos() {
+    const { data: artigos, error } = await supabaseClient
+        .from("artigos").select("artigo_id, ref_primavera, designacao, unidade").order("designacao");
+    if (error) { console.error(error); return; }
+
+    const { data: lotes } = await supabaseClient.from("lotes_artigo").select("artigo_id, quantidade_atual");
+    const stockPorArtigo = {};
+    (lotes ?? []).forEach((l) => {
+        stockPorArtigo[l.artigo_id] = (stockPorArtigo[l.artigo_id] || 0) + Number(l.quantidade_atual);
+    });
+
+    todosArtigosComStock = artigos.map((a) => ({ ...a, stock: stockPorArtigo[a.artigo_id] || 0 }));
+    renderizarListaArtigos();
+}
+
+function renderizarListaArtigos() {
+    const filtro = document.getElementById("laFiltro").value.trim().toLowerCase();
+    const filtrados = filtro
+        ? todosArtigosComStock.filter((a) => a.ref_primavera.toLowerCase().includes(filtro) || a.designacao.toLowerCase().includes(filtro))
+        : todosArtigosComStock;
+
+    const corpo = document.getElementById("corpoListaArtigos");
+    corpo.innerHTML = filtrados.length ? "" :
+        `<tr><td colspan="4" style="text-align:center; color:var(--ink-suave);">Sem artigos a mostrar.</td></tr>`;
+    filtrados.slice(0, 200).forEach((a) => {
+        const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        tr.innerHTML = `
+            <td data-rotulo="Referência" class="mono">${escaparHtml(a.ref_primavera)}</td>
+            <td data-rotulo="Designação">${escaparHtml(a.designacao)}</td>
+            <td data-rotulo="Unidade">${escaparHtml((a.unidade ?? "un").toUpperCase())}</td>
+            <td data-rotulo="Stock total">${a.stock.toFixed(2)}</td>
+        `;
+        tr.addEventListener("click", () => {
+            document.getElementById("uArtigoTexto").value = `${a.ref_primavera} — ${a.designacao}`;
+            document.getElementById("uArtigo").value = a.artigo_id;
+            carregarConversoesExistentes(a.artigo_id);
+            mudarSecao("producao");
+            setTimeout(() => document.getElementById("uArtigoTexto").scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+        });
+        corpo.appendChild(tr);
+    });
+    if (filtrados.length > 200) {
+        const aviso = document.createElement("tr");
+        aviso.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-suave); font-size:12px;">A mostrar os primeiros 200 de ${filtrados.length} — refina o filtro para veres mais precisamente.</td>`;
+        corpo.appendChild(aviso);
+    }
+}
+document.getElementById("laFiltro").addEventListener("input", renderizarListaArtigos);
 
 // --- Receitas (BOM) — nova versão: escolhe produto, define rendimento,
 // soma matérias-primas com quantidade TOTAL usada (não por unidade) — o
@@ -1651,9 +1821,13 @@ async function carregarReceitaExistente(produtoId) {
 
 async function carregarOpcoesUnidadeReceita(componenteId) {
     const select = document.getElementById("rUnidadeQtd");
+    const campoCusto = document.getElementById("rCusto");
+    const avisoCustoExistente = document.getElementById("rCustoExistente");
     if (!componenteId) {
         select.disabled = true;
         select.innerHTML = `<option value="">Escolhe a matéria-prima primeiro</option>`;
+        campoCusto.style.display = "none";
+        avisoCustoExistente.style.display = "none";
         return;
     }
     const { data } = await supabaseClient.from("artigos").select("unidade").eq("artigo_id", componenteId).maybeSingle();
@@ -1662,6 +1836,21 @@ async function carregarOpcoesUnidadeReceita(componenteId) {
     select.innerHTML = opcoes.map((o) => `<option value="${o.valor}">${o.rotulo}</option>`).join("");
     select.disabled = false;
     select.dataset.unidadeBase = unidadeBase;
+
+    // Se este artigo já tem custo médio, usa-se esse sozinho — não se pede
+    // outra vez. Só quando ainda não existe é que o campo aparece, e o
+    // valor que escreveres ali passa a ser o custo médio do artigo,
+    // válido para o site todo, não só para esta receita.
+    const { data: custoExistente } = await supabaseClient.from("custos_artigo").select("custo_unitario").eq("artigo_id", componenteId).maybeSingle();
+    if (custoExistente?.custo_unitario != null) {
+        campoCusto.style.display = "none";
+        campoCusto.value = "";
+        avisoCustoExistente.textContent = `Custo já definido: €${Number(custoExistente.custo_unitario).toFixed(4)}/un — usa-se automaticamente.`;
+        avisoCustoExistente.style.display = "block";
+    } else {
+        campoCusto.style.display = "block";
+        avisoCustoExistente.style.display = "none";
+    }
 }
 
 document.getElementById("btnAdicionarLinhaReceita").addEventListener("click", async () => {
@@ -1673,10 +1862,21 @@ document.getElementById("btnAdicionarLinhaReceita").addEventListener("click", as
     const unidadeEscolhida = document.getElementById("rUnidadeQtd").value;
     const unidadeBase = document.getElementById("rUnidadeQtd").dataset.unidadeBase;
     const rendimento = Number(document.getElementById("rRendimento").value) || 1;
+    const custoNovo = document.getElementById("rCusto").value;
 
     if (!produtoId) { erroEl.textContent = "Escolhe primeiro o produto final."; return; }
     if (!componenteId || !quantidadeEscrita) { erroEl.textContent = "Escolhe a matéria-prima e a quantidade."; return; }
     if (produtoId === componenteId) { erroEl.textContent = "O produto não pode ser matéria-prima de si próprio."; return; }
+
+    // Se o campo de custo estava visível (artigo ainda sem custo) e
+    // preencheste, grava-se logo no custo médio do artigo — fica válido
+    // em todo o site a partir de agora, não é um valor só desta receita.
+    if (document.getElementById("rCusto").style.display !== "none" && custoNovo) {
+        await supabaseClient.from("custos_artigo").upsert(
+            { artigo_id: componenteId, custo_unitario: Number(custoNovo) },
+            { onConflict: "artigo_id" }
+        );
+    }
 
     const quantidadeBase = converterParaUnidadeBase(Number(quantidadeEscrita), unidadeEscolhida, unidadeBase);
     const racio = quantidadeBase / rendimento;
@@ -1691,6 +1891,7 @@ document.getElementById("btnAdicionarLinhaReceita").addEventListener("click", as
     renderizarReceitaAtual();
 
     document.getElementById("rQuantidade").value = "";
+    document.getElementById("rCusto").value = "";
     document.getElementById("rComponenteTexto").value = "";
     document.getElementById("rComponente").value = "";
     carregarOpcoesUnidadeReceita(null);
@@ -1792,12 +1993,16 @@ document.getElementById("btnGuardarPreco").addEventListener("click", async () =>
     carregarPrecosEValorPotencial();
 });
 
+let ultimosPrecosClientes = [];
+let ultimoStockPorArtigo = {};
+
 async function carregarPrecosEValorPotencial() {
     const { data: precos, error } = await supabaseClient
         .from("precos_cliente")
-        .select("preco_unitario, clientes(nome), artigos(artigo_id, designacao)")
+        .select("preco_unitario, clientes(cliente_id, nome), artigos(artigo_id, designacao)")
         .order("criado_em", { ascending: false });
     if (error) { console.error(error); return; }
+    ultimosPrecosClientes = precos ?? [];
 
     // Junta-se do lado do browser em vez de aninhar na consulta — evita
     // ambiguidade do PostgREST sobre a relação 1-para-1 entre artigos e
@@ -1819,24 +2024,44 @@ async function carregarPrecosEValorPotencial() {
     });
 
     const { data: stocks } = await supabaseClient.from("lotes_artigo").select("artigo_id, quantidade_atual");
-    const stockPorArtigo = {};
-    (stocks ?? []).forEach((s) => { stockPorArtigo[s.artigo_id] = (stockPorArtigo[s.artigo_id] || 0) + Number(s.quantidade_atual); });
+    ultimoStockPorArtigo = {};
+    (stocks ?? []).forEach((s) => { ultimoStockPorArtigo[s.artigo_id] = (ultimoStockPorArtigo[s.artigo_id] || 0) + Number(s.quantidade_atual); });
 
     let valorTotalCusto = 0;
     const artigosVistos = new Set();
-    const corpoPotencial = document.getElementById("corpoValorPotencial");
-    corpoPotencial.innerHTML = precos.length ? "" :
-        `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem preços de contrato carregados ainda.</td></tr>`;
-    precos.forEach((p) => {
+    (precos ?? []).forEach((p) => {
         const artigoId = p.artigos?.artigo_id;
-        const stock = stockPorArtigo[artigoId] || 0;
-        const potencial = stock * Number(p.preco_unitario);
-
         if (artigoId && !artigosVistos.has(artigoId)) {
             artigosVistos.add(artigoId);
-            valorTotalCusto += stock * Number(custoPorArtigo[artigoId] ?? 0);
+            valorTotalCusto += (ultimoStockPorArtigo[artigoId] || 0) * Number(custoPorArtigo[artigoId] ?? 0);
         }
+    });
+    document.getElementById("valorStockTotal").textContent = "€" + valorTotalCusto.toFixed(2);
 
+    // Selector de cliente — só os que têm pelo menos um preço carregado.
+    const clientesUnicos = [...new Map((precos ?? []).map((p) => [p.clientes?.cliente_id, p.clientes?.nome])).entries()]
+        .filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+    const selectCliente = document.getElementById("pvCliente");
+    const seleccaoAnterior = selectCliente.value;
+    selectCliente.innerHTML = `<option value="">Todos os clientes</option>` +
+        clientesUnicos.map(([id, nome]) => `<option value="${id}">${escaparHtml(nome)}</option>`).join("");
+    selectCliente.value = seleccaoAnterior;
+
+    renderizarValorPotencial();
+}
+
+function renderizarValorPotencial() {
+    const clienteFiltro = document.getElementById("pvCliente").value;
+    const linhas = clienteFiltro
+        ? ultimosPrecosClientes.filter((p) => p.clientes?.cliente_id === clienteFiltro)
+        : ultimosPrecosClientes;
+
+    const corpoPotencial = document.getElementById("corpoValorPotencial");
+    corpoPotencial.innerHTML = linhas.length ? "" :
+        `<tr><td colspan="5" style="text-align:center; color:var(--ink-suave);">Sem preços de contrato para mostrar.</td></tr>`;
+    linhas.forEach((p) => {
+        const stock = ultimoStockPorArtigo[p.artigos?.artigo_id] || 0;
+        const potencial = stock * Number(p.preco_unitario);
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td data-rotulo="Cliente">${escaparHtml(p.clientes?.nome ?? "—")}</td>
@@ -1847,8 +2072,53 @@ async function carregarPrecosEValorPotencial() {
         `;
         corpoPotencial.appendChild(tr);
     });
-    document.getElementById("valorStockTotal").textContent = "€" + valorTotalCusto.toFixed(2);
 }
+document.getElementById("pvCliente").addEventListener("change", renderizarValorPotencial);
+
+// Exporta uma tabela cruzada: produtos PA com stock nas linhas, clientes
+// nas colunas, valor potencial em cada cruzamento, e uma linha de total
+// geral por cliente no fim.
+document.getElementById("btnExportarValorPotencial").addEventListener("click", () => {
+    const produtosComStock = [...new Map(
+        ultimosPrecosClientes
+            .filter((p) => (ultimoStockPorArtigo[p.artigos?.artigo_id] || 0) > 0)
+            .map((p) => [p.artigos.artigo_id, p.artigos.designacao])
+    ).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+
+    const clientesUnicos = [...new Map(
+        ultimosPrecosClientes.map((p) => [p.clientes?.cliente_id, p.clientes?.nome])
+    ).entries()].filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+
+    if (!produtosComStock.length || !clientesUnicos.length) {
+        toast("Sem dados suficientes para exportar (precisa de produtos com stock e preços de contrato).", "erro");
+        return;
+    }
+
+    // Mapa rápido: "artigoId|clienteId" -> preço
+    const precoPorPar = {};
+    ultimosPrecosClientes.forEach((p) => {
+        precoPorPar[`${p.artigos?.artigo_id}|${p.clientes?.cliente_id}`] = Number(p.preco_unitario);
+    });
+
+    const cabecalho = ["Produto", ...clientesUnicos.map(([, nome]) => nome)];
+    const linhas = produtosComStock.map(([artigoId, designacao]) => {
+        const stock = ultimoStockPorArtigo[artigoId] || 0;
+        const valores = clientesUnicos.map(([clienteId]) => {
+            const preco = precoPorPar[`${artigoId}|${clienteId}`];
+            return preco !== undefined ? Math.round(stock * preco * 100) / 100 : "";
+        });
+        return [designacao, ...valores];
+    });
+
+    const linhaTotal = ["TOTAL GERAL", ...clientesUnicos.map((_, i) =>
+        linhas.reduce((soma, linha) => soma + (typeof linha[i + 1] === "number" ? linha[i + 1] : 0), 0)
+    )];
+
+    const folha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas, linhaTotal]);
+    const livro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(livro, folha, "Valor potencial");
+    XLSX.writeFile(livro, `valor_potencial_por_cliente_${new Date().toISOString().slice(0, 10)}.xlsx`);
+});
 
 async function carregarValidadesProximas() {
     const dias = Number(document.getElementById("expDias").value);
@@ -2266,6 +2536,7 @@ const TITULOS_SECAO = {
     relatorios: "Relatórios",
     utilizadores: "Utilizadores",
     financeiro: "Preços & Custos",
+    artigos: "Artigos",
     importar: "Importações",
 };
 
